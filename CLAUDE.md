@@ -58,6 +58,10 @@ easy to break with a change that looks reasonable.
   JavaScript compiler API, which the TypeScript 7 package no longer ships; its
   supported range is below 6.1. Dependabot is told to skip TypeScript majors.
   Lift both when typescript-eslint's peer range includes 7.
+- **`$ARGUMENTS` never goes inside an inline-bash span.** A backtick in the
+  developer's text ends the span early and the scorer gets a fragment.
+  `commands/score.md` hands the text over through a quoted heredoc via the
+  Bash tool instead; `docs/HOOK-BEHAVIOUR.md` has the measurement.
 
 ## Where things live
 

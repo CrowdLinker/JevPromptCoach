@@ -72,3 +72,20 @@ synchronously and the mode is read at runtime from `config.json`.
 The measured cost of that decision is ~27-31 ms per prompt in on-demand mode,
 of which ~20 ms is Node process startup. The log append itself is well under a
 millisecond. See the README for what that does and does not mean.
+
+## A backtick in `$ARGUMENTS` ends an inline-bash span
+
+A command file can run a shell command inline with the !`...` syntax, and
+`$ARGUMENTS` is substituted into the file before that span is delimited. A
+backtick in the developer's text therefore closes the span early: the command
+receives the text up to the backtick, and the rest, including any heredoc
+terminator, lands in the output as plain text. Observed on 2.1.x with
+`/jevpromptcoach:score`. The documentation describes no escape for backticks
+and no other way to pass arguments to an inline command.
+
+`commands/score.md` therefore keeps the arguments out of any inline span and
+has the model run the scorer through the Bash tool with the prompt in a quoted
+heredoc. That relies on two documented facts: `${CLAUDE_PLUGIN_ROOT}` is
+substituted in a command's prose, and `disable-model-invocation` stops the
+model from invoking the command, not from using tools inside it. Prompts to a
+coding agent carry backticks routinely, so this is not an edge case.
