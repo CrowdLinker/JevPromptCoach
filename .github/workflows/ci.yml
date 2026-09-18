@@ -11,18 +11,18 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # 20 is the floor the plugin promises and the one users are most likely
-        # to be on; 24 is what it is developed against. Both are verified,
-        # because Claude Code ships as a native binary and brings no Node of its
-        # own — whatever the user has installed is what runs the hook.
-        node: [20, 24]
+        # 22 is the floor the plugin promises; 24 is what it is developed
+        # against. Both are verified, because Claude Code ships as a native
+        # binary and brings no Node of its own — whatever the user has
+        # installed is what runs the hook.
+        node: [22, 24]
 
     name: node ${{ matrix.node }}
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: ${{ matrix.node }}
 

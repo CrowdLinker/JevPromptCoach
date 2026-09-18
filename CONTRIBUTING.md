@@ -103,8 +103,8 @@ every user's plugin cache for nothing — the bundle already contains everything
 the plugin runs. Pin new devDependencies to an exact version instead; that is
 what replaces the lockfile here.
 
-**Node 20 is the floor.** Claude Code is a native binary and brings no Node, so
-whatever the user has installed runs the hook. CI tests 20 and 24. Do not reach
+**Node 22 is the floor.** Claude Code is a native binary and brings no Node, so
+whatever the user has installed runs the hook. CI tests 22 and 24. Do not reach
 for a newer API without raising the floor deliberately and saying so.
 
 ## Style

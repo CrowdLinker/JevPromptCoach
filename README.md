@@ -26,7 +26,7 @@ for output. You get a report on day one instead of in two weeks.
 
 ## Requirements
 
-- **Node 20 or newer** — `node --version`
+- **Node 22 or newer** — `node --version`
 - **Claude Code 2.1.x or newer.** Plugin-declared `UserPromptSubmit` hooks did
   not execute on some earlier versions, and the plugin depends on them.
 - **A TypeSafe API key**, from [console.typesafe.ai](https://console.typesafe.ai/settings/keys).
@@ -36,8 +36,8 @@ no `node_modules`, nothing fetched at runtime, and the only host it ever
 contacts is `api.typesafe.ai`. Installed, it is 376 KB.
 
 Claude Code itself ships as a native binary and brings no Node of its own, so
-the Node on your `PATH` is what runs the hook. Node 20 is the floor and is
-tested in CI alongside 24; nothing here uses a newer API.
+the Node on your `PATH` is what runs the hook. Node 22 is the floor, and CI
+tests 22 and 24.
 
 ## Install
 
@@ -470,6 +470,12 @@ Reproducibility is kept by pinning every devDependency to an exact version and
 by CI failing if a fresh build of `src/` differs from the committed `dist/`. CI
 also fails if a lockfile reappears, because re-adding one is an easy and
 invisible way to put the 43 MB back.
+
+The remaining cost of committing a bundle is diff noise, and `.gitattributes`
+marks `dist/` as generated so GitHub collapses it in pull requests. Running the
+TypeScript directly instead — Node can strip types natively now — was measured
+and rejected: 51 ms against 25 ms for the compiled bundle, on a hook whose whole
+claim is that it stays out of the way.
 
 ## Licence
 

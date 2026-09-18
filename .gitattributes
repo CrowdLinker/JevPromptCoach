@@ -1,0 +1,11 @@
+# dist/ is build output, committed on purpose: Claude Code installs plugins with
+# --ignore-scripts, so no build runs at install time and the hook would have
+# nothing to execute. See the README for the measurements behind that.
+#
+# Marking it generated collapses it in pull request diffs and keeps it out of
+# the language statistics, so reviewers read src/ and are not asked to review a
+# bundle. CI already guarantees it matches a fresh build of src/.
+dist/** linguist-generated=true -diff
+
+# Keep line endings stable across platforms for everything the hook reads.
+* text=auto eol=lf

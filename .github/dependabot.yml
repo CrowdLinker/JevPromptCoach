@@ -1,0 +1,24 @@
+version: 2
+updates:
+  # The workflow pins actions to commit SHAs, because a tag can be repointed at
+  # new code and a SHA cannot. Dependabot is what keeps those pins current —
+  # without it, pinning quietly becomes "frozen on an old version".
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: ci
+
+  # devDependencies only; the plugin has no runtime dependencies. Grouped so a
+  # toolchain bump arrives as one pull request, which matters here because every
+  # one of them has to be checked against the committed dist/.
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      build-toolchain:
+        patterns: ["*"]
+    commit-message:
+      prefix: deps

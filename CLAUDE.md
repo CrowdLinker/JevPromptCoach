@@ -48,9 +48,9 @@ easy to break with a change that looks reasonable.
   With a lockfile present Claude Code runs `npm ci` into every user's plugin
   cache: 43 MB of build tooling, none of it used. Pin devDependencies exactly
   instead. CI fails if a lockfile is tracked.
-- **Node 20 is the floor, not 24.** Claude Code is a native binary and brings no
-  Node of its own, so the user's Node runs the hook. Raising the esbuild target
-  would break users on 20 and 22 for no gain — nothing here needs a newer API.
+- **Node 22 is the floor.** Claude Code is a native binary and brings no Node of
+  its own, so the user's Node runs the hook. Raising the esbuild target further
+  breaks users for no gain — nothing here needs an API newer than 22.
 
 ## Where things live
 

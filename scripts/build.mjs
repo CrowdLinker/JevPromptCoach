@@ -13,7 +13,7 @@ await build({
   bundle: true,
   splitting: true,
   platform: 'node',
-  target: 'node20',
+  target: 'node22',
   format: 'esm',
   minify: false,
   sourcemap: false,
