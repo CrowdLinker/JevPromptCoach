@@ -1,3 +1,8 @@
+
+The prefix is Claude Code's and cannot be removed from the hook side. Line
+breaks inside the string come through as separate lines, which the three-line
+notice in `src/inline.ts` relies on: the score shares the prefixed line and the
+detail sits under it.
 # What the UserPromptSubmit hook can and cannot do
 
 Everything here was measured against Claude Code 2.1.277 on macOS by running a
@@ -10,7 +15,7 @@ they are the first thing to re-check when a Claude Code release changes somethin
 A known issue reported that a `UserPromptSubmit` hook declared in a plugin's
 `hooks.json` registered and matched but never executed, while the same hook in
 `~/.claude/settings.json` worked. On 2.1.277 the plugin-declared hook executes
-normally. JevPromptCoach therefore ships as an ordinary plugin hook and needs no
+normally. Jev (Prompt Coach) therefore ships as an ordinary plugin hook and needs no
 settings.json installer.
 
 If a future release regresses this, the symptom is silent: prompts stop being
@@ -40,6 +45,11 @@ Three channels were tested with the same probe. Only one works.
 | stderr, exit 1 | Nothing displayed |
 | `hookSpecificOutput.systemMessage`, exit 0 | Nothing displayed |
 | Top-level `systemMessage`, exit 0 | Displayed as `UserPromptSubmit says: …` |
+
+The prefix is Claude Code's and cannot be removed from the hook side. Line
+breaks inside the string come through as separate lines, which the three-line
+notice in `src/inline.ts` relies on: the score shares the prefixed line and the
+detail sits under it.
 
 The documented behaviour for a non-zero exit is that stderr is shown to the
 user. It is not, which matches the open report on the issue. `always` mode

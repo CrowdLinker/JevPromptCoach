@@ -8,10 +8,10 @@
     {
       "name": "jevpromptcoach",
       "source": "./",
-      "description": "JevPromptCoach - prompt quality coaching on TypeSafe Jev"
+      "description": "Jev (Prompt Coach) - prompt quality coaching on TypeSafe Jev"
     }
   ],
   "metadata": {
-    "description": "JevPromptCoach - prompt quality coaching for Claude Code, on TypeSafe Jev"
+    "description": "Jev (Prompt Coach) - prompt quality coaching for Claude Code, on TypeSafe Jev"
   }
 }

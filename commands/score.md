@@ -32,5 +32,5 @@ Never print a generic template, and never rewrite a prompt that passed
 everything. If no check failed, say so in one line and stop.
 
 If the output above says the API key is missing, or that Jev did not answer,
-print that message and stop. Do not score the prompt yourself — JevPromptCoach
+print that message and stop. Do not score the prompt yourself — Jev (Prompt Coach)
 measures on Jev or not at all.

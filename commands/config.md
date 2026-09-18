@@ -1,5 +1,5 @@
 ---
-description: Set JevPromptCoach mode and privacy, backfill history, or clear the log
+description: Set Jev (Prompt Coach) mode and privacy, backfill history, or clear the log
 argument-hint: [mode on-demand|always] [privacy redact|metadata_only|raw] [backfill] [clear]
 disable-model-invocation: true
 allowed-tools: Bash
