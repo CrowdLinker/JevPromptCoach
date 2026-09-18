@@ -5,6 +5,7 @@
 import type { Config } from './config.js';
 import { readScores, appendScores } from './log.js';
 import { interpret, scoreOne } from './score.js';
+import { CHECKS } from './checks.js';
 import type { PromptScore } from './score.js';
 
 function format(result: PromptScore): string | null {
@@ -13,10 +14,19 @@ function format(result: PromptScore): string | null {
   const failures = result.checks.filter((c) => c.verdict === 'fail');
   if (failures.length === 0) return null;
 
-  const worst = failures.sort((a, b) => (a.probability ?? 1) - (b.probability ?? 1)).slice(0, 2);
-  const missing = worst.map((c) => c.label.toLowerCase()).join(', ');
+  // Pick the two weakest, then put them back in check order so the sentence
+  // reads the way the checks are taught rather than by probability.
+  const order = new Map(CHECKS.map((c, i) => [c.id, i]));
+  const worst = failures
+    .slice()
+    .sort((a, b) => (a.probability ?? 1) - (b.probability ?? 1))
+    .slice(0, 2)
+    .sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
+  // `shortfall` rather than `label`: the label says what the habit is, and this
+  // sentence needs what is absent from the prompt.
+  const missing = worst.map((c) => c.def.shortfall).join(', and ');
   const score = result.score === null ? '' : `${result.score}/100 · `;
-  return `JevPromptCoach: ${score}missing ${missing}. /jevpromptcoach:score for the fix.`;
+  return `JevPromptCoach: ${score}this prompt does not say ${missing}. Run /jevpromptcoach:score to see how to fix it.`;
 }
 
 /**

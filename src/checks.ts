@@ -23,7 +23,15 @@ export type CheckId =
 
 export interface CheckDef {
   id: CheckId;
+  /**
+   * What the habit is, in the words a developer would use to a colleague.
+   * These are read by people who have not read this file, so they say what to
+   * do rather than naming the concept: "Says which file or function", not
+   * "Names a specific target".
+   */
   label: string;
+  /** The same habit phrased as what is missing, for the `always` one-liner. */
+  shortfall: string;
   instructions: string;
   criteria: { true: string; false: string };
   /** Applicability gate; the check is scored `n/a` when the gate is not met. */
@@ -94,7 +102,8 @@ export const GATES: GateDef[] = [
 export const CHECKS: CheckDef[] = [
   {
     id: 'named_target',
-    label: 'Names a specific target',
+    label: 'Says which file or function',
+    shortfall: 'which file or function',
     instructions:
       'The message identifies where to work by naming at least one concrete file, path, function, class, component, endpoint, or symbol.',
     criteria: {
@@ -107,13 +116,14 @@ export const CHECKS: CheckDef[] = [
     inlineMargin: 0.2,
     // CV fail-precision 0.96 over 28 failing examples.
     inlineEligible: true,
-    cause: 'The request points at the work with a pronoun instead of a name.',
-    consequence: 'The agent has to guess which file you meant, and it searches — or edits the wrong one.',
+    cause: 'You wrote "it" or "the code" instead of a name.',
+    consequence: 'The agent has to guess which file you meant. It searches, or it edits the wrong one.',
     fix: 'Name the file, function, or symbol you want changed.',
   },
   {
     id: 'success_condition',
-    label: 'States a success condition',
+    label: 'Says what "done" looks like',
+    shortfall: 'what "done" looks like',
     instructions:
       'The message states what should be true, or what should happen, once the work is finished.',
     criteria: {
@@ -126,13 +136,14 @@ export const CHECKS: CheckDef[] = [
     inlineMargin: 0.2,
     // CV fail-precision 1.00 over 14 failing examples.
     inlineEligible: true,
-    cause: 'Nothing in the request says what "done" looks like.',
+    cause: 'Nothing in the request says what should be true at the end.',
     consequence: 'The agent picks its own finish line, and stops somewhere you did not want.',
     fix: 'Add one sentence: what should be true when this works.',
   },
   {
     id: 'bounded_scope',
-    label: 'Bounded scope',
+    label: 'Asks for one thing',
+    shortfall: 'a clear boundary',
     instructions:
       'The message asks for one contained, well-defined piece of work rather than an open-ended or sweeping change.',
     criteria: {
@@ -145,13 +156,14 @@ export const CHECKS: CheckDef[] = [
     inlineMargin: 0.2,
     // CV fail-precision 1.00 over 10 failing examples.
     inlineEligible: true,
-    cause: 'The request is open-ended, so its boundary is whatever the agent decides.',
-    consequence: 'You get a sprawling diff touching files you never meant to change, and reviewing it costs more than the fix.',
+    cause: 'The request has no edges, so the agent decides how far to go.',
+    consequence: 'You get a huge change touching files you never meant to touch, and reviewing it takes longer than the fix would have.',
     fix: 'Cut it to the one change you want first. Ask for the rest after.',
   },
   {
     id: 'constraints',
-    label: 'States constraints',
+    label: 'Says what not to touch',
+    shortfall: 'what not to touch',
     instructions:
       'The message states a limit on the work: something that must not be touched, must keep working, or must not change.',
     criteria: {
@@ -163,13 +175,14 @@ export const CHECKS: CheckDef[] = [
     inlineMargin: 0.2,
     // CV fail-precision 0.97 over 30 failing examples.
     inlineEligible: true,
-    cause: 'The request sets no boundary on what may change.',
-    consequence: 'Nothing is off-limits, so a working part of the system gets rewritten as collateral.',
-    fix: 'Say what must stay as it is — the public interface, the schema, the other callers.',
+    cause: 'Nothing in the request is marked off-limits.',
+    consequence: 'Something that was working gets rewritten along the way.',
+    fix: 'Say what must stay as it is — the API, the database schema, the other callers.',
   },
   {
     id: 'repro_included',
-    label: 'Reproduction included',
+    label: 'Includes the real error',
+    shortfall: 'the real error text',
     instructions:
       'The message includes the actual evidence of the failure: real error output, a log line, a stack trace, or a specific statement of what happened versus what was expected.',
     criteria: {
@@ -184,12 +197,13 @@ export const CHECKS: CheckDef[] = [
     // only 5 failing examples in the fixture set — too thin to stand behind inline.
     inlineEligible: false,
     cause: 'The bug is described, but the actual error text is not in the message.',
-    consequence: 'The agent reproduces from your paraphrase and debugs a different failure than the one you hit.',
-    fix: 'Paste the real error, and say what you expected instead.',
+    consequence: 'The agent guesses the error from your description and fixes a different problem.',
+    fix: 'Paste the real error, and say what you expected to happen instead.',
   },
   {
     id: 'plan_first',
     label: 'Asks for a plan first',
+    shortfall: 'a plan before any changes',
     instructions:
       'The message asks to see a plan, an approach, or options before any code is written or anything is changed.',
     criteria: {
@@ -202,13 +216,14 @@ export const CHECKS: CheckDef[] = [
     inlineMargin: 0.2,
     // CV fail-precision 0.86, below the 0.90 bar.
     inlineEligible: false,
-    cause: 'A large or destructive change was requested without asking to see the approach first.',
-    consequence: 'You review the plan only after it has already been written into your repository.',
+    cause: 'You asked for a big or risky change without asking to see the approach first.',
+    consequence: 'You find out how it was going to be done only after it has been done.',
     fix: 'Ask for the plan first, then approve it. "Plan this before changing anything."',
   },
   {
     id: 'verification',
-    label: 'Names a verification',
+    label: 'Says how to check it worked',
+    shortfall: 'how to check it worked',
     instructions:
       'The message names the specific test, command, or check that would prove the work is correct.',
     criteria: {
@@ -221,8 +236,8 @@ export const CHECKS: CheckDef[] = [
     inlineMargin: 0.2,
     // CV fail-precision 1.00 over 39 failing examples.
     inlineEligible: true,
-    cause: 'The request names no test or command that would prove the change worked.',
-    consequence: 'The agent reports success on its own say-so, and you find out it did not work later.',
+    cause: 'Nothing in the request says how to tell whether it worked.',
+    consequence: 'The agent says it worked, and you find out later that it did not.',
     fix: 'Name the command. "Verify with npm test -- auth.spec.ts."',
   },
 ];

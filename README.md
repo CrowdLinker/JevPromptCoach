@@ -173,16 +173,16 @@ cause, the consequence, and the fix — then rewrites *your* text so it would pa
 ```
 # Prompt score: 0/100
 
-FAIL  Names a specific target  (0.02)
-FAIL  States a success condition  (0.27)
-FAIL  Bounded scope  (0.03)
+FAIL  Says which file or function  (0.03)
+FAIL  Says what "done" looks like  (0.26)
+FAIL  Asks for one thing  (0.06)
 ...
 
-### Names a specific target
-- Cause: The request points at the work with a pronoun instead of a name.
-- Consequence: The agent has to guess which file you meant, and it searches —
-  or edits the wrong one.
-- Fix: Name the file, function, or symbol you want changed.
+### Says which file or function
+- What is missing: You wrote "it" or "the code" instead of a name.
+- What goes wrong: The agent has to guess which file you meant. It searches,
+  or it edits the wrong one.
+- Do this instead: Name the file, function, or symbol you want changed.
 ```
 
 With no argument it explains itself and shows an example. It does not error.
@@ -213,15 +213,19 @@ Coding-agent habits, not generic prompt engineering. All seven ride in **one**
 Jev request per prompt — Jev reads the prompt once and answers every question
 against it in parallel, so the full set costs about what one question costs.
 
-| Check | What it asks |
+| Check | What it looks for |
 | --- | --- |
-| `named_target` | Names specific files or functions, not "the code" or "it" |
-| `success_condition` | States what should be true when the work is done |
-| `bounded_scope` | One concrete change, not "refactor everything" |
-| `constraints` | States what must not be touched or must stay stable |
-| `repro_included` | Bug reports carry real error text, or expected vs actual |
-| `plan_first` | Asks for a plan before a large or destructive change |
-| `verification` | Names the test or command that proves it worked |
+| Says which file or function | A real name, not "the code" or "it" |
+| Says what "done" looks like | What should be true when the work is finished |
+| Asks for one thing | One concrete change, not "refactor everything" |
+| Says what not to touch | What must stay as it is |
+| Includes the real error | The actual error text, or what you expected versus what happened |
+| Asks for a plan first | Asked to see the approach before a big or risky change |
+| Says how to check it worked | The test or command that would prove it |
+
+Their ids in the code and in `test/eval-results.json` are `named_target`,
+`success_condition`, `bounded_scope`, `constraints`, `repro_included`,
+`plan_first` and `verification`.
 
 Two are conditional. `repro_included` is only scored on bug reports and
 `plan_first` only on large or destructive requests; both applicability questions
@@ -250,8 +254,8 @@ entirely — it is not waiting on anything, and it cannot delay a response.
 The hook also scores the prompt and prints one line while the prompt proceeds:
 
 ```
-JevPromptCoach: 29/100 · missing names a specific target, names a verification.
-/jevpromptcoach:score for the fix.
+JevPromptCoach: 29/100 · this prompt does not say which file or function, and
+how to check it worked. Run /jevpromptcoach:score to see how to fix it.
 ```
 
 Guarantees:
@@ -374,13 +378,13 @@ thresholds inside each fold and scoring only held-out prompts:
 
 | Check | CV fail-precision | CV fail-recall | n | Inline? |
 | --- | --- | --- | --- | --- |
-| `named_target` | 0.96 | 0.93 | 28 | yes |
-| `success_condition` | 1.00 | 0.86 | 14 | yes |
-| `bounded_scope` | 1.00 | 0.60 | 10 | yes |
-| `constraints` | 0.97 | 0.97 | 30 | yes |
-| `repro_included` | 1.00 | 0.80 | 5 | **no** — 5 cases is too thin |
-| `plan_first` | 0.86 | 0.75 | 8 | **no** — below the 0.90 bar |
-| `verification` | 1.00 | 0.97 | 39 | yes |
+| Says which file or function | 0.96 | 0.93 | 28 | yes |
+| Says what "done" looks like | 1.00 | 0.86 | 14 | yes |
+| Asks for one thing | 1.00 | 0.60 | 10 | yes |
+| Says what not to touch | 0.97 | 0.97 | 30 | yes |
+| Includes the real error | 1.00 | 0.80 | 5 | **no** — 5 cases is too thin |
+| Asks for a plan first | 0.86 | 0.75 | 8 | **no** — below the 0.90 bar |
+| Says how to check it worked | 1.00 | 0.97 | 39 | yes |
 
 Applicability gates: `is_bug_report` 0.93, `is_large_change` 0.85.
 

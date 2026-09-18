@@ -25,17 +25,21 @@ export function renderScore(text: string, result: PromptScore): string {
     lines.push('', '## What to fix', '');
     for (const check of failures) {
       lines.push(`### ${check.label}`);
-      lines.push(`- Cause: ${check.def.cause}`);
-      lines.push(`- Consequence: ${check.def.consequence}`);
-      lines.push(`- Fix: ${check.def.fix}`);
+      lines.push(`- What is missing: ${check.def.cause}`);
+      lines.push(`- What goes wrong: ${check.def.consequence}`);
+      lines.push(`- Do this instead: ${check.def.fix}`);
       lines.push('');
     }
   }
 
   const na = result.checks.filter((c) => c.verdict === 'n/a');
   if (na.length > 0) {
-    lines.push(`Not applicable to this prompt: ${na.map((c) => c.label).join(', ')}.`);
+    lines.push(`Did not apply to this prompt: ${na.map((c) => c.label.toLowerCase()).join(', ')}.`);
+    lines.push('A prompt is only judged on the habits that fit it — you are not');
+    lines.push('marked down for leaving out an error message when nothing is broken.');
+    lines.push('');
   }
+  lines.push('The number after each line is how sure the model was, from 0 to 1.');
 
   lines.push('', '## Original text', '', text);
   return lines.join('\n');
@@ -47,7 +51,7 @@ function bar(value: number, width = 20): string {
 }
 
 function renderCheckRow(stat: CheckStat, signalValidated: boolean): string {
-  const head = `${stat.label.padEnd(26)} ${bar(stat.hitRate)} ${pct(stat.hitRate).padStart(4)}  (${stat.passed}/${stat.applicable})`;
+  const head = `${stat.label.padEnd(28)} ${bar(stat.hitRate)} ${pct(stat.hitRate).padStart(4)}  ${stat.passed} of ${stat.applicable}`;
   if (!signalValidated || stat.correctionWhenPass === null || stat.correctionWhenFail === null) return head;
   const flag = stat.significant ? '' : '  [not significant]';
   return `${head}\n${' '.repeat(28)}corrections: ${pct(stat.correctionWhenPass)} when it passes vs ${pct(stat.correctionWhenFail)} when it fails${flag}`;
@@ -66,18 +70,18 @@ export function renderReport(report: Report, requested: number): string {
 
   const range = report.from && report.to ? `${report.from.slice(0, 10)} to ${report.to.slice(0, 10)}` : '';
   lines.push(`${report.promptsScored} prompts across ${report.sessions} sessions, ${range}`);
-  lines.push(`Mean score: ${report.meanScore}/100`);
+  lines.push(`Average score: ${report.meanScore}/100`);
   if (report.trendDelta !== null) {
     const sign = report.trendDelta > 0 ? '+' : '';
     const direction = report.trendDelta > 0 ? 'improving' : report.trendDelta < 0 ? 'slipping' : 'flat';
-    lines.push(`30-day trend: ${sign}${report.trendDelta} points (${direction})`);
+    lines.push(`Over the last 30 days: ${sign}${report.trendDelta} points (${direction})`);
   }
   lines.push('');
 
-  lines.push('## Per check', '');
+  lines.push('## How often you do each one', '');
   for (const stat of report.checks) {
     if (stat.applicable === 0) {
-      lines.push(`${stat.label.padEnd(26)} (never applicable in this window)`);
+      lines.push(`${stat.label.padEnd(28)} (did not apply to any prompt here)`);
       continue;
     }
     lines.push(renderCheckRow(stat, report.correction.signalValidated));
@@ -85,36 +89,41 @@ export function renderReport(report: Report, requested: number): string {
   lines.push('');
 
   if (report.trend.length >= 2) {
-    lines.push('## Daily score', '');
+    lines.push('## Score by day', '');
     for (const point of report.trend) {
-      lines.push(`${point.day}  ${bar(point.score / 100, 24)} ${String(point.score).padStart(3)}  n=${point.count}`);
+      const prompts = point.count === 1 ? '1 prompt' : `${point.count} prompts`;
+      lines.push(`${point.day}  ${bar(point.score / 100, 24)} ${String(point.score).padStart(3)}  from ${prompts}`);
     }
     lines.push('');
   }
 
-  lines.push('## Outcome signal', '');
+  lines.push('## Does it make any difference?', '');
   if (!report.correction.available) {
-    lines.push('Correction rate not computed for this window. Run a backfill to populate it.');
-  } else if (report.correction.signalValidated) {
-    lines.push(
-      `Across ${report.correction.judged} prompt pairs, ${pct(report.correction.overallRate ?? 0)} of prompts were followed by a correction.`,
-    );
-    const winners = report.checks.filter((c) => c.significant);
-    lines.push(
-      `Checks whose outcome gap clears significance (p < 0.05): ${winners.map((c) => c.label).join(', ')}.`,
-    );
+    lines.push('Not measured yet for these prompts. A backfill fills this in.');
   } else {
     lines.push(
-      `Across ${report.correction.judged} prompt pairs, ${pct(report.correction.overallRate ?? 0)} of prompts were followed by a correction.`,
+      `${pct(report.correction.overallRate ?? 0)} of your prompts were followed by you correcting or`,
     );
-    lines.push('No check shows a correction-rate gap that clears significance on this data,');
-    lines.push('so hit rates and trend are reported on their own. No correlation is claimed.');
+    lines.push(
+      `redirecting the agent, across ${report.correction.judged} back-to-back pairs of messages.`,
+    );
+    lines.push('');
+    if (report.correction.signalValidated) {
+      const winners = report.checks.filter((c) => c.significant);
+      lines.push('These habits show a real difference — prompts that have them get');
+      lines.push(`corrected less often: ${winners.map((c) => c.label.toLowerCase()).join(', ')}.`);
+    } else {
+      lines.push('We checked whether the habits above make corrections less likely, and');
+      lines.push('on your data they do not: no habit shows a difference big enough to be');
+      lines.push('more than chance. So treat the numbers above as what you wrote, not as');
+      lines.push('proof of what worked. Nothing here claims one causes the other.');
+    }
   }
   lines.push('');
 
   if (report.focus) {
-    lines.push('## Focus on one habit', '');
-    lines.push(`${report.focus.label} — you get this right ${pct(report.focus.hitRate)} of the time.`);
+    lines.push('## Work on this one', '');
+    lines.push(`${report.focus.label} — you do this ${pct(report.focus.hitRate)} of the time.`);
     const def = report.checks.find((c) => c.id === report.focus!.id);
     if (def && report.focus.significant && report.focus.gap !== null) {
       lines.push(
@@ -123,6 +132,9 @@ export function renderReport(report: Report, requested: number): string {
     }
     lines.push('');
     lines.push('That is the one to change. Leave the rest alone until it moves.');
+    lines.push('');
+    lines.push('Each bar above is how often you did that thing, out of the prompts');
+    lines.push('it applied to. A prompt is only judged on the habits that fit it.');
   }
 
   return lines.join('\n');
