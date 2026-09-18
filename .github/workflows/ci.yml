@@ -8,18 +8,45 @@ on:
 jobs:
   verify:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # 20 is the floor the plugin promises and the one users are most likely
+        # to be on; 24 is what it is developed against. Both are verified,
+        # because Claude Code ships as a native binary and brings no Node of its
+        # own — whatever the user has installed is what runs the hook.
+        node: [20, 24]
+
+    name: node ${{ matrix.node }}
+
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
-          node-version: 20
+          node-version: ${{ matrix.node }}
 
-      - run: npm ci
+      # `npm install`, not `npm ci`: there is deliberately no lockfile. See
+      # .gitignore for why. Every devDependency is pinned to an exact version,
+      # and the dist/ drift check below catches any toolchain surprise.
+      - run: npm install --no-audit --no-fund
 
-      # Runs before anything else. A pull request that carries a credential or
-      # someone's prompt text fails here, whether or not the author had the
-      # local pre-commit hook installed — `--no-verify` skips the hook, not this.
+      # A lockfile here would make Claude Code install 43 MB into every user's
+      # plugin cache for nothing.
+      - name: No lockfile at the plugin root
+        run: |
+          if git ls-files --error-unmatch package-lock.json npm-shrinkwrap.json \
+               yarn.lock pnpm-lock.yaml bun.lock bun.lockb 2>/dev/null; then
+            echo "A lockfile is tracked. Claude Code would then npm ci into every"
+            echo "user's plugin cache. Remove it — see the note in .gitignore."
+            exit 1
+          fi
+          echo "No lockfile tracked."
+
+      # Runs before anything else that could hide it. A pull request carrying a
+      # credential or someone's prompt text fails here, whether or not the
+      # author had the local pre-commit hook installed — `--no-verify` skips the
+      # hook, not this.
       - name: Leak scan
         run: npm run check-leaks
 
@@ -29,8 +56,10 @@ jobs:
       - name: Build
         run: npm run build
 
-      # dist/ is committed so the plugin needs no install step. If a build from
-      # this source produces something different, the committed bundle is stale.
+      # dist/ is committed so the plugin needs no install step: Claude Code runs
+      # npm ci with --ignore-scripts, so no build ever happens at install time,
+      # and without dist/ the hook would have nothing to execute. That only
+      # works if the committed bundle matches the source.
       - name: dist/ is in sync with src/
         run: |
           if ! git diff --quiet -- dist; then
@@ -40,7 +69,5 @@ jobs:
           fi
 
       # Redaction and the hook's wire behaviour. No API key, no external network.
-      # Quoting the glob would hand Node the literal pattern: Node 20 does not
-      # expand it, so the shell must.
       - name: Tests
         run: npm run test:unit

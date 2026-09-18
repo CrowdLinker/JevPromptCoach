@@ -31,8 +31,13 @@ for output. You get a report on day one instead of in two weeks.
   not execute on some earlier versions, and the plugin depends on them.
 - **A TypeSafe API key**, from [console.typesafe.ai](https://console.typesafe.ai/settings/keys).
 
-The plugin bundles its own dependencies. There is no install step, nothing is
-fetched at runtime, and the only host it ever contacts is `api.typesafe.ai`.
+The plugin bundles its own dependencies into `dist/`. There is no install step,
+no `node_modules`, nothing fetched at runtime, and the only host it ever
+contacts is `api.typesafe.ai`. Installed, it is 376 KB.
+
+Claude Code itself ships as a native binary and brings no Node of its own, so
+the Node on your `PATH` is what runs the hook. Node 20 is the floor and is
+tested in CI alongside 24; nothing here uses a newer API.
 
 ## Install
 
@@ -442,8 +447,29 @@ exits 0 on every path. The hook test asserts on the actual request body, against
 a local capture server, because the bug it exists to catch was a caller passing
 the raw prompt to a function that does no redaction of its own.
 
-`dist/` is committed on purpose. A plugin that has to `npm install` before its
-hook can run is a plugin that adds latency to your first prompt.
+### Why `dist/` is committed, and why there is no lockfile
+
+Both come from the same measurement.
+
+Claude Code installs a plugin's dependencies with `--ignore-scripts`, so **no
+build ever runs at install time**. Without a committed `dist/`, the hook would
+point at a file that does not exist. The bundle is self-contained — the hook
+runs with no `node_modules` at all, which is also what keeps it at 27 ms.
+
+Given that, a lockfile is pure cost. Claude Code runs `npm ci` when a plugin has
+both a `package.json` and a lockfile, and it installs devDependencies: 43 MB of
+esbuild and TypeScript in every user's plugin cache, on a 60-second timeout, of
+which nothing is used. Dropping the lockfile skips that step entirely.
+
+| | plugin cache |
+| --- | --- |
+| with a lockfile | 44 MB |
+| without | **376 KB** |
+
+Reproducibility is kept by pinning every devDependency to an exact version and
+by CI failing if a fresh build of `src/` differs from the committed `dist/`. CI
+also fails if a lockfile reappears, because re-adding one is an easy and
+invisible way to put the 43 MB back.
 
 ## Licence
 

@@ -6,3 +6,21 @@ node_modules/
 # made them. See test/fixtures/README.md.
 test/fixtures/prompts.json
 test/eval-raw.json
+
+# No lockfile at the plugin root, deliberately.
+#
+# Claude Code runs `npm ci --ignore-scripts` when a plugin it installs has both
+# a package.json and a lockfile. Measured: that pulls 43 MB of esbuild and
+# TypeScript into every user's plugin cache, on a 60-second timeout, and not one
+# byte of it is used — dist/ is bundled and the hook runs with no node_modules
+# at all. Without a lockfile the install is skipped and the cache is 376 KB.
+#
+# Reproducibility is kept instead by pinning every devDependency to an exact
+# version, and by CI failing if a fresh build of src/ differs from committed
+# dist/. CI enforces that no lockfile comes back.
+package-lock.json
+npm-shrinkwrap.json
+yarn.lock
+pnpm-lock.yaml
+bun.lockb
+bun.lock

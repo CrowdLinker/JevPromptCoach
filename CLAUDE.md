@@ -41,8 +41,16 @@ easy to break with a change that looks reasonable.
   test asserts it on the wire.
 - **`metadata_only` means no text leaves the machine.** Any new code path that
   sends text must check for it.
-- **`dist/` is committed and must match `src/`.** Run `npm run build` after any
-  source change; CI fails if it drifts.
+- **`dist/` is committed and must match `src/`.** Claude Code installs with
+  `--ignore-scripts`, so nothing is ever built at install time. Run
+  `npm run build` after any source change; CI fails if it drifts.
+- **Never commit a lockfile.** `npm install` writes one and it is gitignored.
+  With a lockfile present Claude Code runs `npm ci` into every user's plugin
+  cache: 43 MB of build tooling, none of it used. Pin devDependencies exactly
+  instead. CI fails if a lockfile is tracked.
+- **Node 20 is the floor, not 24.** Claude Code is a native binary and brings no
+  Node of its own, so the user's Node runs the hook. Raising the esbuild target
+  would break users on 20 and 22 for no gain — nothing here needs a newer API.
 
 ## Where things live
 

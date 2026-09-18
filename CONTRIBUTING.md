@@ -91,9 +91,21 @@ signal did not hold up on real history. If you add a new signal, validate it
 first and be willing to publish a negative result — see
 [docs/OUTCOME-SIGNAL.md](docs/OUTCOME-SIGNAL.md) for the shape that takes.
 
-**`dist/` is committed.** A plugin that has to install before its hook can run
-adds latency to the first prompt. Run `npm run build` and commit the result; CI
-fails if the committed bundle does not match a fresh build of `src/`.
+**`dist/` is committed.** Claude Code installs plugin dependencies with
+`--ignore-scripts`, so no build ever runs at install time — without a committed
+bundle the hook points at nothing. Run `npm run build` and commit the result;
+CI fails if the committed bundle does not match a fresh build of `src/`.
+
+**Do not add a lockfile.** `npm install` will write one; it is gitignored, and
+CI fails if one is ever tracked. Claude Code runs `npm ci` when a plugin has
+both a `package.json` and a lockfile, which puts 43 MB of build tooling into
+every user's plugin cache for nothing — the bundle already contains everything
+the plugin runs. Pin new devDependencies to an exact version instead; that is
+what replaces the lockfile here.
+
+**Node 20 is the floor.** Claude Code is a native binary and brings no Node, so
+whatever the user has installed runs the hook. CI tests 20 and 24. Do not reach
+for a newer API without raising the floor deliberately and saying so.
 
 ## Style
 
