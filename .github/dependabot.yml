@@ -20,5 +20,11 @@ updates:
     groups:
       build-toolchain:
         patterns: ["*"]
+    ignore:
+      # typescript-eslint parses with the JavaScript compiler API, which the
+      # TypeScript 7 package no longer ships; its supported range is below 6.1.
+      # Lift this when typescript-eslint's peer range includes 7.
+      - dependency-name: typescript
+        update-types: ["version-update:semver-major"]
     commit-message:
       prefix: deps

@@ -26,10 +26,18 @@ const SECRETS = [
   ['aws', j('id ', 'AKIA', 'IOSFODNN7EXAMPLE', ' here'), j('AKIA', 'IOSFODNN7EXAMPLE')],
   ['google', j('AIza', 'SyA1234567890abcdefghijklmnopqrstuvw', ' maps key'), 'SyA1234567890abcdefghijklmnopqrstuvw'],
   ['slack', j('xox', 'b-', '123456789012-', 'abcdefghijklmnop'), 'abcdefghijklmnop'],
-  ['pem', j('-----', 'BEGIN RSA ', 'PRIVATE KEY', '-----\nMIIEowIBAAKCAQEA\n-----', 'END RSA ', 'PRIVATE KEY', '-----'), 'MIIEowIBAAKCAQEA'],
+  [
+    'pem',
+    j('-----', 'BEGIN RSA ', 'PRIVATE KEY', '-----\nMIIEowIBAAKCAQEA\n-----', 'END RSA ', 'PRIVATE KEY', '-----'),
+    'MIIEowIBAAKCAQEA',
+  ],
   ['assigned', j('DATABASE_PASSWORD', '=', 'hunter2correcthorse'), 'hunter2correcthorse'],
   ['bearer', j('Authorization: ', 'Bearer ', 'abcdef1234567890xyz'), 'abcdef1234567890xyz'],
-  ['jwt', j('eyJhbGciOiJIUzI1NiJ9', '.', 'eyJzdWIiOiIxMjM0NTY3ODkwIn0', '.', 'dBjftJeZ4CVPmB92K27uhbUJU1p1r'), 'dBjftJeZ4CVPmB92K27uhbUJU1p1r'],
+  [
+    'jwt',
+    j('eyJhbGciOiJIUzI1NiJ9', '.', 'eyJzdWIiOiIxMjM0NTY3ODkwIn0', '.', 'dBjftJeZ4CVPmB92K27uhbUJU1p1r'),
+    'dBjftJeZ4CVPmB92K27uhbUJU1p1r',
+  ],
 ];
 
 test('every credential shape is removed by redact()', () => {

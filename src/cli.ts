@@ -2,26 +2,40 @@
  * Everything the slash commands run. All Jev calls live here — the hook never
  * makes one in on-demand mode.
  */
-import { loadConfig, saveConfig, apiKey, apiKeySource, ENV_PATH, DATA_DIR, LOG_PATH, type Mode, type Privacy } from './config.js';
-import { applyPrivacy } from './redact.js';
-import { skipReason } from './skip.js';
-import { promptHash } from './hash.js';
-import { readLog, appendLogMany, readScores, appendScores, clearLog, compactScores, type LogEntry } from './log.js';
-import { scoreOne, scoreMany, interpret, clampPrompt } from './score.js';
-import { buildPairs, detectCorrections, type CorrectionRecord } from './correction.js';
-import { buildReport } from './report.js';
-import { renderScore, renderReport } from './render.js';
-import { readHistory } from './history.js';
-import { estimateTokens, USD_PER_INPUT_TOKEN } from './jev.js';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { CHECKS, GATES } from './checks.js';
+import { apiKey, apiKeySource, ENV_PATH, LOG_PATH, loadConfig, saveConfig } from './config.js';
+import { buildPairs, detectCorrections, estimateCorrectionTokens } from './correction.js';
+import { promptHash } from './hash.js';
+import { readHistory } from './history.js';
+import { USD_PER_INPUT_TOKEN } from './jev.js';
+import {
+  appendLogMany,
+  appendScores,
+  clearLocalData,
+  compactScores,
+  hasText,
+  type LogEntry,
+  readCorrections,
+  readLog,
+  readScores,
+  writeCorrections,
+} from './log.js';
+import { applyPrivacy } from './redact.js';
+import { buildReport } from './report.js';
+import { renderReport, renderScore } from './render.js';
+import { estimateScoringTokens, interpret, scoreMany, scoreOne } from './score.js';
+import { skipReason } from './skip.js';
 
-const out = (s: string): void => { process.stdout.write(s + '\n'); };
+const out = (s: string): void => {
+  process.stdout.write(s + '\n');
+};
 
 function requireKey(): boolean {
   if (apiKey()) return true;
   out('No TypeSafe API key found.');
   out('');
-  out('JevPromptCoach runs on TypeSafe\'s Jev model and makes no calls without it.');
+  out("JevPromptCoach runs on TypeSafe's Jev model and makes no calls without it.");
   out('Get a key at https://console.typesafe.ai/settings/keys, then put it in the');
   out('key file — created locked down first, so the key is never world-readable');
   out('and never sits in your shell history:');
@@ -38,20 +52,8 @@ function requireKey(): boolean {
   return false;
 }
 
-/** Cost of one scoring pass over n prompts, in USD. Output tokens are free. */
-function estimateScoringCost(texts: string[]): { tokens: number; usd: number } {
-  const questionOverhead = [...CHECKS, ...GATES].reduce(
-    (sum, q) => sum + estimateTokens(q.instructions + q.criteria.true + q.criteria.false + 40),
-    0,
-  );
-  const tokens = texts.reduce((sum, t) => sum + estimateTokens(clampPrompt(t)) + questionOverhead, 0);
-  return { tokens, usd: tokens * USD_PER_INPUT_TOKEN };
-}
-
-function estimateCorrectionCost(pairs: { first: string; second: string }[]): { tokens: number; usd: number } {
-  const tokens = pairs.reduce((sum, p) => sum + estimateTokens(p.first + p.second) + 120, 0);
-  return { tokens, usd: tokens * USD_PER_INPUT_TOKEN };
-}
+/** Jev bills input tokens only; output is free. */
+const usd = (tokens: number): string => `$${(tokens * USD_PER_INPUT_TOKEN).toFixed(4)}`;
 
 // ---------------------------------------------------------------- score
 
@@ -110,32 +112,44 @@ async function cmdReport(argv: string[]): Promise<void> {
   const entries = readLog();
 
   if (entries.length === 0) {
-    out(renderReport(
-      { promptsConsidered: 0, promptsScored: 0, sessions: 0, from: null, to: null, meanScore: null,
-        checks: [], trend: [], trendDelta: null, focus: null,
-        correction: { available: false, judged: 0, overallRate: null, signalValidated: false } },
-      requested,
-    ));
+    out(
+      renderReport(
+        {
+          promptsConsidered: 0,
+          promptsScored: 0,
+          sessions: 0,
+          from: null,
+          to: null,
+          meanScore: null,
+          checks: [],
+          trend: [],
+          trendDelta: null,
+          focus: null,
+          correction: { available: false, judged: 0, overallRate: null, signalValidated: false },
+        },
+        requested,
+      ),
+    );
     return;
   }
 
   const window = entries.slice(-requested);
   const scores = readScores();
 
-  const unscored = window.filter((e) => e.text !== null && !scores.has(e.hash));
+  const unscored = window.filter(hasText).filter((e) => !scores.has(e.hash));
   // Without a key we cannot score the new ones, but we can still report on
   // everything already scored. Refusing to print anything would make the report
   // permanently unusable, since the hook keeps logging new prompts.
   if (unscored.length > 0 && !apiKey()) {
     process.stderr.write(
       `TYPESAFE_API_KEY is not set, so ${unscored.length} newer prompts could not be scored.\n` +
-      'Reporting on what is already scored. Nothing was sent.\n',
+        'Reporting on what is already scored. Nothing was sent.\n',
     );
   } else if (unscored.length > 0) {
-    const cost = estimateScoringCost(unscored.map((e) => e.text!));
-    process.stderr.write(`Scoring ${unscored.length} new prompts (~$${cost.usd.toFixed(4)})…\n`);
+    const tokens = estimateScoringTokens(unscored.map((e) => e.text));
+    process.stderr.write(`Scoring ${unscored.length} new prompts (~${usd(tokens)})…\n`);
     const records = await scoreMany(
-      unscored.map((e) => ({ hash: e.hash, text: e.text! })),
+      unscored.map((e) => ({ hash: e.hash, text: e.text })),
       { onProgress: (d, t) => process.stderr.write(`  batch ${d}/${t}\r`) },
     );
     appendScores(records);
@@ -143,15 +157,7 @@ async function cmdReport(argv: string[]): Promise<void> {
     process.stderr.write('\n');
   }
 
-  const corrections = new Map<string, CorrectionRecord>();
-  try {
-    const cached = JSON.parse(
-      (await import('node:fs')).readFileSync(`${DATA_DIR}/corrections.json`, 'utf8'),
-    ) as CorrectionRecord[];
-    for (const record of cached) corrections.set(record.hash, record);
-  } catch { /* none yet */ }
-
-  out(renderReport(buildReport({ entries: window, scores, corrections }), requested));
+  out(renderReport(buildReport({ entries: window, scores, corrections: readCorrections() }), requested));
 }
 
 // ---------------------------------------------------------------- backfill
@@ -174,19 +180,22 @@ async function cmdBackfill(argv: string[]): Promise<void> {
   const existing = new Set(readLog().map((e) => e.hash));
   const fresh = selected.filter((p) => !existing.has(promptHash(p.text)));
 
-  const texts = fresh.map((p) => applyPrivacy(p.text, config.privacy).text ?? '');
-  const scoringCost = estimateScoringCost(texts.filter(Boolean));
-
   const provisional: LogEntry[] = fresh.map((p) => {
     const { text, features } = applyPrivacy(p.text, config.privacy);
     return {
-      ts: p.ts, session: p.session, hash: promptHash(p.text), text, features,
-      source: 'backfill' as const, project: p.project,
+      ts: p.ts,
+      session: p.session,
+      hash: promptHash(p.text),
+      text,
+      features,
+      source: 'backfill' as const,
+      project: p.project,
     };
   });
+  const sendable = provisional.filter(hasText).map((e) => ({ hash: e.hash, text: e.text }));
+  const scoringTokens = estimateScoringTokens(sendable.map((e) => e.text));
   const pairs = buildPairs(provisional);
-  const correctionCost = estimateCorrectionCost(pairs);
-  const total = scoringCost.usd + correctionCost.usd;
+  const correctionTokens = estimateCorrectionTokens(pairs);
 
   if (!confirmed) {
     out('# Backfill estimate');
@@ -196,16 +205,18 @@ async function cmdBackfill(argv: string[]): Promise<void> {
     out(`New (not already logged): ${fresh.length}`);
     out(`Correction-rate pairs:    ${pairs.length}`);
     out('');
-    out(`Scoring:     ~${scoringCost.tokens.toLocaleString()} input tokens  ~$${scoringCost.usd.toFixed(4)}`);
-    out(`Corrections: ~${correctionCost.tokens.toLocaleString()} input tokens  ~$${correctionCost.usd.toFixed(4)}`);
-    out(`Total:       ~$${total.toFixed(4)}  (Jev charges input tokens only; output is free)`);
+    out(`Scoring:     ~${scoringTokens.toLocaleString()} input tokens  ~${usd(scoringTokens)}`);
+    out(`Corrections: ~${correctionTokens.toLocaleString()} input tokens  ~${usd(correctionTokens)}`);
+    out(`Total:       ~${usd(scoringTokens + correctionTokens)}  (Jev charges input tokens only; output is free)`);
     out('');
     out(`Privacy level in force: ${config.privacy}.`);
-    out(config.privacy === 'redact'
-      ? 'Paths, emails and credential-shaped strings are stripped before anything is sent.'
-      : config.privacy === 'metadata_only'
-        ? 'No prompt text will be sent. Derived features only — and scoring needs text, so this will score nothing.'
-        : 'RAW: prompt text is sent as written, with credential-shaped strings still stripped.');
+    out(
+      config.privacy === 'redact'
+        ? 'Paths, emails and credential-shaped strings are stripped before anything is sent.'
+        : config.privacy === 'metadata_only'
+          ? 'No prompt text will be sent. Derived features only — and scoring needs text, so this will score nothing.'
+          : 'RAW: prompt text is sent as written, with credential-shaped strings still stripped.',
+    );
     out('');
     out('Nothing has been sent. To go ahead, run the command again and confirm.');
     return;
@@ -222,31 +233,28 @@ async function cmdBackfill(argv: string[]): Promise<void> {
 
   process.stderr.write(`Scoring ${fresh.length} prompts…\n`);
   let usedTokens = 0;
-  const records = await scoreMany(
-    provisional.filter((e) => e.text).map((e) => ({ hash: e.hash, text: e.text! })),
-    {
-      onUsage: (u) => { usedTokens += u.input_tokens; },
-      onProgress: (d, t) => process.stderr.write(`  scoring batch ${d}/${t}\r`),
+  const records = await scoreMany(sendable, {
+    onUsage: (u) => {
+      usedTokens += u.input_tokens;
     },
-  );
+    onProgress: (d, t) => process.stderr.write(`  scoring batch ${d}/${t}\r`),
+  });
   appendScores(records);
   compactScores();
   process.stderr.write('\n');
 
   process.stderr.write(`Judging ${pairs.length} prompt pairs for corrections…\n`);
   const corrections = await detectCorrections(pairs, {
-    onUsage: (u) => { usedTokens += u.input_tokens; },
+    onUsage: (u) => {
+      usedTokens += u.input_tokens;
+    },
     onProgress: (d, t) => process.stderr.write(`  correction batch ${d}/${t}\r`),
   });
   process.stderr.write('\n');
 
-  const fs = await import('node:fs');
-  const path = `${DATA_DIR}/corrections.json`;
-  let merged: CorrectionRecord[] = [];
-  try { merged = JSON.parse(fs.readFileSync(path, 'utf8')) as CorrectionRecord[]; } catch { /* first run */ }
-  const byHash = new Map(merged.map((c) => [c.hash, c]));
-  for (const record of corrections) byHash.set(record.hash, record);
-  fs.writeFileSync(path, JSON.stringify([...byHash.values()]), { mode: 0o600 });
+  const merged = readCorrections();
+  for (const record of corrections) merged.set(record.hash, record);
+  writeCorrections(merged.values());
 
   saveConfig({ ...config, lastBackfill: new Date().toISOString(), setupComplete: true });
 
@@ -254,7 +262,7 @@ async function cmdBackfill(argv: string[]): Promise<void> {
   out('');
   out(`Prompts logged and scored: ${records.length}`);
   out(`Prompt pairs judged:       ${corrections.length}`);
-  out(`Input tokens billed:       ${usedTokens.toLocaleString()}  (~$${(usedTokens * USD_PER_INPUT_TOKEN).toFixed(4)})`);
+  out(`Input tokens billed:       ${usedTokens.toLocaleString()}  (~${usd(usedTokens)})`);
   out('');
   out('Run /jevpromptcoach:report to see it.');
 }
@@ -269,7 +277,9 @@ async function cmdConfig(argv: string[]): Promise<void> {
     const scores = readScores();
     out('# JevPromptCoach configuration');
     out('');
-    out(`Mode:            ${config.mode}${config.mode === 'on-demand' ? '  (hook only logs; zero added latency)' : '  (hook also scores and prints one line)'}`);
+    out(
+      `Mode:            ${config.mode}${config.mode === 'on-demand' ? '  (hook only logs; zero added latency)' : '  (hook also scores and prints one line)'}`,
+    );
     out(`Privacy:         ${config.privacy}`);
     out(`Bypass prefix:   ${config.bypassPrefix}  (a prompt starting with this is never logged or scored)`);
     out(`Always timeout:  ${config.alwaysTimeoutMs} ms`);
@@ -278,11 +288,15 @@ async function cmdConfig(argv: string[]): Promise<void> {
     // key came from the file sends anyone debugging a missing key to the wrong
     // place, and the file is the method the docs now teach.
     const source = apiKeySource();
-    out(`API key:         ${
-      source === 'environment' ? 'set (TYPESAFE_API_KEY in the environment)'
-      : source === 'key file' ? `set (${ENV_PATH})`
-      : 'NOT SET — no scoring is possible'
-    }`);
+    out(
+      `API key:         ${
+        source === 'environment'
+          ? 'set (TYPESAFE_API_KEY in the environment)'
+          : source === 'key file'
+            ? `set (${ENV_PATH})`
+            : 'NOT SET — no scoring is possible'
+      }`,
+    );
     out('');
     out(`Log:             ${LOG_PATH}`);
     out(`Prompts logged:  ${entries.length}`);
@@ -300,8 +314,11 @@ async function cmdConfig(argv: string[]): Promise<void> {
   const [key, value] = argv;
 
   if (key === 'mode') {
-    if (value !== 'on-demand' && value !== 'always') { out('mode must be on-demand or always'); return; }
-    saveConfig({ ...config, mode: value as Mode, setupComplete: true });
+    if (value !== 'on-demand' && value !== 'always') {
+      out('mode must be on-demand or always');
+      return;
+    }
+    saveConfig({ ...config, mode: value, setupComplete: true });
     out(`Mode set to ${value}.`);
     if (value === 'always') {
       out('');
@@ -314,9 +331,10 @@ async function cmdConfig(argv: string[]): Promise<void> {
 
   if (key === 'privacy') {
     if (value !== 'redact' && value !== 'metadata_only' && value !== 'raw') {
-      out('privacy must be redact, metadata_only or raw'); return;
+      out('privacy must be redact, metadata_only or raw');
+      return;
     }
-    saveConfig({ ...config, privacy: value as Privacy, setupComplete: true });
+    saveConfig({ ...config, privacy: value, setupComplete: true });
     out(`Privacy set to ${value}.`);
     if (value === 'raw') out('Prompt text will be sent as written. Credential-shaped strings are still stripped.');
     if (value === 'metadata_only') out('No prompt text will be logged or sent. Scoring needs text, so scoring is off.');
@@ -325,22 +343,25 @@ async function cmdConfig(argv: string[]): Promise<void> {
 
   if (key === 'timeout') {
     const ms = Number.parseInt(value ?? '', 10);
-    if (!Number.isFinite(ms) || ms < 500 || ms > 30_000) { out('timeout must be between 500 and 30000 ms'); return; }
+    if (!Number.isFinite(ms) || ms < 500 || ms > 30_000) {
+      out('timeout must be between 500 and 30000 ms');
+      return;
+    }
     saveConfig({ ...config, alwaysTimeoutMs: ms });
     out(`Always-mode timeout set to ${ms} ms.`);
     return;
   }
 
   if (key === 'clear') {
-    clearLog();
-    try {
-      (await import('node:fs')).writeFileSync(`${DATA_DIR}/corrections.json`, '[]', { mode: 0o600 });
-    } catch { /* nothing to clear */ }
+    clearLocalData();
     out('Local log, score cache and correction records deleted.');
     return;
   }
 
-  if (key === 'backfill') { await cmdBackfill(argv.slice(1)); return; }
+  if (key === 'backfill') {
+    await cmdBackfill(argv.slice(1));
+    return;
+  }
 
   out(`Unknown setting: ${key}`);
 }
@@ -375,7 +396,10 @@ async function cmdFixturesInit(argv: string[]): Promise<void> {
   const picked: typeof unique = [];
   for (const bucket of buckets) {
     const step = Math.max(1, Math.floor(bucket.length / perBucket));
-    for (let i = 0; i < bucket.length && picked.length < count; i += step) picked.push(bucket[i]!);
+    for (let i = 0; i < bucket.length && picked.length < count; i += step) {
+      const prompt = bucket[i];
+      if (prompt) picked.push(prompt);
+    }
   }
 
   const fixtures = picked.slice(0, count).map((p, i) => ({
@@ -385,8 +409,7 @@ async function cmdFixturesInit(argv: string[]): Promise<void> {
     gates: Object.fromEntries(GATES.map((g) => [g.id, null])),
   }));
 
-  const fs = await import('node:fs');
-  fs.writeFileSync(outPath, JSON.stringify(fixtures, null, 1) + '\n');
+  writeFileSync(outPath, `${JSON.stringify(fixtures, null, 1)}\n`);
   out(`Wrote ${fixtures.length} unlabelled fixtures to ${outPath}.`);
   out('');
   out('Nothing was sent anywhere. Label them by hand from the criteria in');
@@ -399,15 +422,17 @@ async function cmdFixturesInit(argv: string[]): Promise<void> {
 function cmdStatus(): void {
   const config = loadConfig();
   const entries = readLog();
-  out(JSON.stringify({
-    setupComplete: config.setupComplete,
-    mode: config.mode,
-    privacy: config.privacy,
-    hasKey: Boolean(apiKey()),
-    logged: entries.length,
-    scored: readScores().size,
-    lastBackfill: config.lastBackfill,
-  }));
+  out(
+    JSON.stringify({
+      setupComplete: config.setupComplete,
+      mode: config.mode,
+      privacy: config.privacy,
+      hasKey: Boolean(apiKey()),
+      logged: entries.length,
+      scored: readScores().size,
+      lastBackfill: config.lastBackfill,
+    }),
+  );
 }
 
 // ---------------------------------------------------------------- main
@@ -416,20 +441,29 @@ const [command, ...rest] = process.argv.slice(2);
 
 const run = async (): Promise<void> => {
   switch (command) {
-    case 'score': return cmdScore(rest);
+    case 'score':
+      return cmdScore(rest);
     case 'score-stdin': {
       // The prompt text arrives on stdin inside a quoted heredoc, so no shell
       // expansion ever touches what the developer typed.
-      const { readFileSync } = await import('node:fs');
       let text = '';
-      try { text = readFileSync(0, 'utf8'); } catch { /* no stdin */ }
+      try {
+        text = readFileSync(0, 'utf8');
+      } catch {
+        /* no stdin */
+      }
       return cmdScore([], text);
     }
-    case 'report': return cmdReport(rest);
-    case 'config': return cmdConfig(rest);
-    case 'backfill': return cmdBackfill(rest);
-    case 'fixtures-init': return cmdFixturesInit(rest);
-    case 'status': return cmdStatus();
+    case 'report':
+      return cmdReport(rest);
+    case 'config':
+      return cmdConfig(rest);
+    case 'backfill':
+      return cmdBackfill(rest);
+    case 'fixtures-init':
+      return cmdFixturesInit(rest);
+    case 'status':
+      return cmdStatus();
     default:
       out('usage: cli.js score <text> | report [n] | config [...] | backfill [--confirm] | fixtures-init | status');
   }

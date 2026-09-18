@@ -2,11 +2,10 @@
  * The `always` mode one-liner. Split out of hook.ts so that on-demand mode
  * never loads it, and with it never loads the Jev client.
  */
-import type { Config } from './config.js';
-import { readScores, appendScores } from './log.js';
-import { interpret, scoreOne } from './score.js';
 import { CHECKS } from './checks.js';
-import type { PromptScore } from './score.js';
+import type { Config } from './config.js';
+import { appendScores, readScores } from './log.js';
+import { interpret, type PromptScore, scoreOne } from './score.js';
 
 function format(result: PromptScore): string | null {
   // Only confident failures reach the line. `inlineSafe` has already demoted
@@ -18,10 +17,9 @@ function format(result: PromptScore): string | null {
   // reads the way the checks are taught rather than by probability.
   const order = new Map(CHECKS.map((c, i) => [c.id, i]));
   const worst = failures
-    .slice()
-    .sort((a, b) => (a.probability ?? 1) - (b.probability ?? 1))
+    .toSorted((a, b) => (a.probability ?? 1) - (b.probability ?? 1))
     .slice(0, 2)
-    .sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
+    .toSorted((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
   // `shortfall` rather than `label`: the label says what the habit is, and this
   // sentence needs what is absent from the prompt.
   const missing = worst.map((c) => c.def.shortfall).join(', ');
@@ -43,7 +41,9 @@ export async function runInline(redactedText: string, hash: string, config: Conf
     if (cached) {
       return format(interpret(hash, cached.probabilities, cached.gates, { inlineSafe: true }));
     }
-  } catch { /* cache unreadable; score it fresh */ }
+  } catch {
+    /* cache unreadable; score it fresh */
+  }
 
   const deadline = new Promise<null>((resolve) => {
     const timer = setTimeout(() => resolve(null), config.alwaysTimeoutMs);
@@ -56,6 +56,10 @@ export async function runInline(redactedText: string, hash: string, config: Conf
   ]);
   if (!scored) return null;
 
-  try { appendScores([scored.record]); } catch { /* cache write is best effort */ }
+  try {
+    appendScores([scored.record]);
+  } catch {
+    /* cache write is best effort */
+  }
   return format(scored.result);
 }

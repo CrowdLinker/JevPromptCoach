@@ -11,9 +11,7 @@ export function renderScore(text: string, result: PromptScore): string {
 
   for (const check of result.checks) {
     const mark =
-      check.verdict === 'pass' ? 'PASS' :
-      check.verdict === 'fail' ? 'FAIL' :
-      check.verdict === 'n/a' ? ' n/a' : '  ? ';
+      check.verdict === 'pass' ? 'PASS' : check.verdict === 'fail' ? 'FAIL' : check.verdict === 'n/a' ? ' n/a' : '  ? ';
     const p = check.probability === null ? '' : `  (${check.probability.toFixed(2)})`;
     lines.push(`${mark}  ${check.label}${p}`);
   }
@@ -107,12 +105,8 @@ export function renderReport(report: Report, requested: number): string {
   if (!report.correction.available) {
     lines.push('Not measured yet for these prompts. A backfill fills this in.');
   } else {
-    lines.push(
-      `${pct(report.correction.overallRate ?? 0)} of your prompts were followed by you correcting or`,
-    );
-    lines.push(
-      `redirecting the agent, across ${report.correction.judged} back-to-back pairs of messages.`,
-    );
+    lines.push(`${pct(report.correction.overallRate ?? 0)} of your prompts were followed by you correcting or`);
+    lines.push(`redirecting the agent, across ${report.correction.judged} back-to-back pairs of messages.`);
     lines.push('');
     if (report.correction.signalValidated) {
       const winners = report.checks.filter((c) => c.significant);
@@ -130,11 +124,8 @@ export function renderReport(report: Report, requested: number): string {
   if (report.focus) {
     lines.push('## Work on this one', '');
     lines.push(`${report.focus.label} — you do this ${pct(report.focus.hitRate)} of the time.`);
-    const def = report.checks.find((c) => c.id === report.focus!.id);
-    if (def && report.focus.significant && report.focus.gap !== null) {
-      lines.push(
-        `Prompts that miss it are corrected ${Math.round(report.focus.gap * 100)} points more often.`,
-      );
+    if (report.focus.significant && report.focus.gap !== null) {
+      lines.push(`Prompts that miss it are corrected ${Math.round(report.focus.gap * 100)} points more often.`);
     }
     lines.push('');
     lines.push('That is the one to change. Leave the rest alone until it moves.');

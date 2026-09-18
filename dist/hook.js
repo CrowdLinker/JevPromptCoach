@@ -2,16 +2,16 @@
 import {
   promptHash,
   skipReason
-} from "./chunk-AMURQLF6.js";
+} from "./chunk-F3M3WE3B.js";
 import {
   applyPrivacy
-} from "./chunk-CZRZPMXP.js";
+} from "./chunk-VM4R2HGT.js";
 import {
   appendLog
-} from "./chunk-H3A3BY5V.js";
+} from "./chunk-RC2GUYJC.js";
 import {
   loadConfig
-} from "./chunk-DQOMOEZG.js";
+} from "./chunk-JBKH57J6.js";
 
 // src/hook.ts
 import { readFileSync } from "node:fs";
@@ -42,16 +42,17 @@ async function main() {
     hash,
     text: stored,
     features,
-    source: "hook",
-    project: input.cwd?.split("/").filter(Boolean).pop()
+    source: "hook"
   };
+  const project = input.cwd?.split("/").filter(Boolean).pop();
+  if (project) entry.project = project;
   try {
     appendLog(entry);
   } catch {
   }
   if (config.mode !== "always") return;
   if (stored === null) return;
-  const { runInline } = await import("./inline-62CDC2NZ.js");
+  const { runInline } = await import("./inline-NKZZZL46.js");
   const line = await runInline(stored, hash, config);
   if (line) emitLine(line);
 }

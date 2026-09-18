@@ -82,8 +82,7 @@ export const GATES: GateDef[] = [
       'The message reports something that is broken, failing, or behaving wrongly, and asks for it to be diagnosed or fixed.',
     criteria: {
       true: 'Reports a defect, crash, failure, wrong output, or regression in existing behaviour.',
-      false:
-        'Asks for new work, a refactor, an explanation, a review, or a question. Nothing is claimed to be broken.',
+      false: 'Asks for new work, a refactor, an explanation, a review, or a question. Nothing is claimed to be broken.',
     },
   },
   {
@@ -91,10 +90,8 @@ export const GATES: GateDef[] = [
     instructions:
       'The message asks for work that is large, architectural, or destructive, rather than a small contained edit.',
     criteria: {
-      true:
-        'Asks to rewrite, migrate, restructure, redesign, delete, drop, or reset something; or spans many files, modules, or a whole system.',
-      false:
-        'Asks for one contained edit, a question, a review, or a small addition that is easy to undo.',
+      true: 'Asks to rewrite, migrate, restructure, redesign, delete, drop, or reset something; or spans many files, modules, or a whole system.',
+      false: 'Asks for one contained edit, a question, a review, or a small addition that is easy to undo.',
     },
   },
 ];
@@ -107,8 +104,7 @@ export const CHECKS: CheckDef[] = [
     instructions:
       'The message identifies where to work by naming at least one concrete file, path, function, class, component, endpoint, or symbol.',
     criteria: {
-      true:
-        'Names something the reader could go and open or search for: a filename, a path, a function or method name, a class, a component, a route, a table, or a specific identifier from the codebase.',
+      true: 'Names something the reader could go and open or search for: a filename, a path, a function or method name, a class, a component, a route, a table, or a specific identifier from the codebase.',
       false:
         'Refers to the work only in general terms such as "the code", "it", "this", "the function", "the bug", "the app", or describes it purely by behaviour with no name attached.',
     },
@@ -124,11 +120,9 @@ export const CHECKS: CheckDef[] = [
     id: 'success_condition',
     label: 'States what "done" looks like',
     shortfall: 'what "done" looks like',
-    instructions:
-      'The message states what should be true, or what should happen, once the work is finished.',
+    instructions: 'The message states what should be true, or what should happen, once the work is finished.',
     criteria: {
-      true:
-        'Describes the intended end state or desired behaviour: what should happen instead, what the output should be, what should pass, or what the user should see.',
+      true: 'Describes the intended end state or desired behaviour: what should happen instead, what the output should be, what should pass, or what the user should see.',
       false:
         'Describes only the action to take, or only the current problem, without saying what "finished" looks like.',
     },
@@ -147,8 +141,7 @@ export const CHECKS: CheckDef[] = [
     instructions:
       'The message asks for one contained, well-defined piece of work rather than an open-ended or sweeping change.',
     criteria: {
-      true:
-        'Asks for a single change, or a small set of clearly enumerated changes, with a recognisable boundary.',
+      true: 'Asks for a single change, or a small set of clearly enumerated changes, with a recognisable boundary.',
       false:
         'Asks for something open-ended or sweeping — "clean this up", "refactor everything", "make it better", "fix all the issues" — or bundles several unrelated requests into one message.',
     },
@@ -157,7 +150,8 @@ export const CHECKS: CheckDef[] = [
     // CV fail-precision 1.00 over 10 failing examples.
     inlineEligible: true,
     cause: 'The request has no edges, so the agent decides how far to go.',
-    consequence: 'You get a huge change touching files you never meant to touch, and reviewing it takes longer than the fix would have.',
+    consequence:
+      'You get a huge change touching files you never meant to touch, and reviewing it takes longer than the fix would have.',
     fix: 'Cut it to the one change you want first. Ask for the rest after.',
   },
   {
@@ -167,8 +161,7 @@ export const CHECKS: CheckDef[] = [
     instructions:
       'The message states a limit on the work: something that must not be touched, must keep working, or must not change.',
     criteria: {
-      true:
-        'Names something to leave alone or preserve — a file, module, interface, behaviour, or API that must stay stable — or forbids an approach ("without adding a dependency", "do not change the schema").',
+      true: 'Names something to leave alone or preserve — a file, module, interface, behaviour, or API that must stay stable — or forbids an approach ("without adding a dependency", "do not change the schema").',
       false: 'States no limit. Nothing is marked off as out of bounds or required to stay the same.',
     },
     threshold: 0.3,
@@ -186,8 +179,7 @@ export const CHECKS: CheckDef[] = [
     instructions:
       'The message includes the actual evidence of the failure: real error output, a log line, a stack trace, or a specific statement of what happened versus what was expected.',
     criteria: {
-      true:
-        'Quotes real output — an error message, exception, stack trace, failing assertion, or log — or states both the observed behaviour and the expected behaviour specifically.',
+      true: 'Quotes real output — an error message, exception, stack trace, failing assertion, or log — or states both the observed behaviour and the expected behaviour specifically.',
       false:
         'Describes the failure only in general terms such as "it is broken", "it does not work", "there is an error", without the actual text or a concrete expected-versus-actual pair.',
     },
@@ -207,8 +199,7 @@ export const CHECKS: CheckDef[] = [
     instructions:
       'The message asks to see a plan, an approach, or options before any code is written or anything is changed.',
     criteria: {
-      true:
-        'Explicitly asks to plan, propose, outline, investigate, or explain the approach first, or to check in before making the change.',
+      true: 'Explicitly asks to plan, propose, outline, investigate, or explain the approach first, or to check in before making the change.',
       false: 'Asks for the work to be carried out directly, with no step before it.',
     },
     appliesWhen: { gate: 'is_large_change', minProbability: 0.5 },
@@ -224,11 +215,9 @@ export const CHECKS: CheckDef[] = [
     id: 'verification',
     label: 'States the verification steps',
     shortfall: 'the verification steps',
-    instructions:
-      'The message names the specific test, command, or check that would prove the work is correct.',
+    instructions: 'The message names the specific test, command, or check that would prove the work is correct.',
     criteria: {
-      true:
-        'Names something runnable or checkable: a test file or test name, a command to run, a script, a URL or page to load, or an explicit instruction to verify in a stated way.',
+      true: 'Names something runnable or checkable: a test file or test name, a command to run, a script, a URL or page to load, or an explicit instruction to verify in a stated way.',
       false:
         'Names no test or command. Asks only for the change, or says "make sure it works" without saying how that would be established.',
     },
@@ -251,8 +240,7 @@ export const CORRECTION_QUESTION = {
   instructions:
     'In the conversation below, does the SECOND message correct, clarify, or redirect the request made in the FIRST message, rather than moving on to new work?',
   criteria: {
-    true:
-      'The second message pushes back, fixes a misunderstanding, restates the request more precisely, points out that the result was wrong, or asks for the previous attempt to be changed or undone.',
+    true: 'The second message pushes back, fixes a misunderstanding, restates the request more precisely, points out that the result was wrong, or asks for the previous attempt to be changed or undone.',
     false:
       'The second message accepts the previous result and moves on, starts unrelated work, or simply asks a new question.',
   },

@@ -10,11 +10,12 @@
  * screen, and a false one interrupts a message for nothing. Pass-precision is
  * reported too, but it is not what gates the inline line.
  */
-import { readFileSync, writeFileSync, existsSync } from 'node:fs';
-import { CHECKS, GATES, type CheckId } from './checks.js';
-import { scoreMany } from './score.js';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { CHECKS, type CheckId, GATES } from './checks.js';
 import { apiKey } from './config.js';
+import { MODEL, USD_PER_INPUT_TOKEN } from './jev.js';
 import type { ScoreRecord } from './log.js';
+import { scoreMany } from './score.js';
 
 interface Fixture {
   id: string;
@@ -23,12 +24,14 @@ interface Fixture {
   gates: Record<string, boolean>;
 }
 
-interface ClassMetrics { precision: number | null; recall: number | null; support: number; predicted: number }
+interface ClassMetrics {
+  precision: number | null;
+  recall: number | null;
+  support: number;
+  predicted: number;
+}
 
-function metricsFor(
-  rows: { truth: boolean; predicted: boolean }[],
-  positive: boolean,
-): ClassMetrics {
+function metricsFor(rows: { truth: boolean; predicted: boolean }[], positive: boolean): ClassMetrics {
   const tp = rows.filter((r) => r.predicted === positive && r.truth === positive).length;
   const fp = rows.filter((r) => r.predicted === positive && r.truth !== positive).length;
   const fn = rows.filter((r) => r.predicted !== positive && r.truth === positive).length;
@@ -70,15 +73,17 @@ async function main(): Promise<void> {
     inputTokens = cached.inputTokens;
     process.stderr.write(`Using cached probabilities from ${cachePath} (no API calls).\n`);
   } else {
-  process.stderr.write(`Scoring ${fixtures.length} fixtures…\n`);
-  records = await scoreMany(
-    fixtures.map((f) => ({ hash: f.id, text: f.text })),
-    {
-      onUsage: (u) => { inputTokens += u.input_tokens; },
-      onProgress: (d, t) => process.stderr.write(`  batch ${d}/${t}\n`),
-    },
-  );
-  writeFileSync(cachePath, JSON.stringify({ inputTokens, records }, null, 1) + '\n');
+    process.stderr.write(`Scoring ${fixtures.length} fixtures…\n`);
+    records = await scoreMany(
+      fixtures.map((f) => ({ hash: f.id, text: f.text })),
+      {
+        onUsage: (u) => {
+          inputTokens += u.input_tokens;
+        },
+        onProgress: (d, t) => process.stderr.write(`  batch ${d}/${t}\n`),
+      },
+    );
+    writeFileSync(cachePath, `${JSON.stringify({ inputTokens, records }, null, 1)}\n`);
   }
   const byId = new Map<string, ScoreRecord>(records.map((r) => [r.hash, r]));
   const missing = fixtures.filter((f) => !byId.has(f.id));
@@ -94,13 +99,14 @@ async function main(): Promise<void> {
   lines.push('Gates');
   lines.push('  gate                 acc   n');
   for (const gate of GATES) {
-    let correct = 0; let total = 0;
+    let correct = 0;
+    let total = 0;
     for (const fixture of fixtures) {
       const record = byId.get(fixture.id);
       const p = record?.gates[gate.id];
       if (p === undefined) continue;
       total += 1;
-      if ((p >= 0.5) === fixture.gates[gate.id]) correct += 1;
+      if (p >= 0.5 === fixture.gates[gate.id]) correct += 1;
     }
     lines.push(`  ${gate.id.padEnd(20)} ${total ? (correct / total).toFixed(2) : ' -- '}  ${total}`);
   }
@@ -125,18 +131,28 @@ async function main(): Promise<void> {
       raw.push({ truth, p });
     }
 
-    const fail = metricsFor(rows.map((r) => ({ truth: !r.truth, predicted: !r.predicted })), true);
+    const fail = metricsFor(
+      rows.map((r) => ({ truth: !r.truth, predicted: !r.predicted })),
+      true,
+    );
     const pass = metricsFor(rows, true);
 
     let best = def.threshold;
     if (tune) {
       let bestScore = -1;
       for (let t = 0.05; t <= 0.95; t += 0.05) {
-        const tuned = metricsFor(raw.map((r) => ({ truth: !r.truth, predicted: r.p < t })), true);
+        const tuned = metricsFor(
+          raw.map((r) => ({ truth: !r.truth, predicted: r.p < t })),
+          true,
+        );
         if (tuned.precision === null || tuned.support < MIN_SUPPORT) continue;
         // Maximise recall subject to clearing the precision bar.
-        const score = tuned.precision >= TUNING_PRECISION ? 1 + (tuned.recall ?? 0) + tuned.precision / 100 : tuned.precision;
-        if (score > bestScore) { bestScore = score; best = Number(t.toFixed(2)); }
+        const score =
+          tuned.precision >= TUNING_PRECISION ? 1 + (tuned.recall ?? 0) + tuned.precision / 100 : tuned.precision;
+        if (score > bestScore) {
+          bestScore = score;
+          best = Number(t.toFixed(2));
+        }
       }
     }
 
@@ -145,7 +161,9 @@ async function main(): Promise<void> {
     if (measurable && !clears) allClear = false;
     const verdict = !measurable
       ? `too few fail cases (n=${fail.support}) — not measurable`
-      : clears ? 'ok' : `BELOW ${TARGET_PRECISION}`;
+      : clears
+        ? 'ok'
+        : `BELOW ${TARGET_PRECISION}`;
 
     lines.push(
       `  ${def.id.padEnd(20)} ${def.threshold.toFixed(2)} |  ${fmt(fail.precision)}  ${fmt(fail.recall)} ${String(fail.support).padStart(2)} |  ${fmt(pass.precision)}  ${fmt(pass.recall)} ${String(pass.support).padStart(2)} | ${verdict}${tune ? `  (best thr ${best})` : ''}`,
@@ -182,23 +200,27 @@ async function main(): Promise<void> {
       let thr = def.threshold;
       let bestScore = -1;
       for (let t = 0.05; t <= 0.95; t += 0.05) {
-        const m = metricsFor(train.map((r) => ({ truth: !r.truth, predicted: r.p < t })), true);
+        const m = metricsFor(
+          train.map((r) => ({ truth: !r.truth, predicted: r.p < t })),
+          true,
+        );
         if (m.precision === null) continue;
         const score = m.precision >= TUNING_PRECISION ? 1 + (m.recall ?? 0) : m.precision;
-        if (score > bestScore) { bestScore = score; thr = Number(t.toFixed(2)); }
+        if (score > bestScore) {
+          bestScore = score;
+          thr = Number(t.toFixed(2));
+        }
       }
       for (const r of test) held.push({ truth: !r.truth, predicted: r.p < thr });
     }
     const cv = metricsFor(held, true);
     cvResults[def.id] = { precision: cv.precision, recall: cv.recall, support: cv.support };
-    lines.push(
-      `  ${def.id.padEnd(20)}  ${fmt(cv.precision)}  ${fmt(cv.recall)} ${String(cv.support).padStart(2)}`,
-    );
+    lines.push(`  ${def.id.padEnd(20)}  ${fmt(cv.precision)}  ${fmt(cv.recall)} ${String(cv.support).padStart(2)}`);
   }
   results['_crossValidated'] = cvResults;
 
   lines.push('');
-  lines.push(`Input tokens: ${inputTokens.toLocaleString()}  (~$${(inputTokens * 0.042 / 1e6).toFixed(4)})`);
+  lines.push(`Input tokens: ${inputTokens.toLocaleString()}  (~$${(inputTokens * USD_PER_INPUT_TOKEN).toFixed(4)})`);
   lines.push(
     allClear
       ? `All measurable checks clear fail-precision ${TARGET_PRECISION}.`
@@ -211,7 +233,14 @@ async function main(): Promise<void> {
   writeFileSync(
     'test/eval-results.json',
     JSON.stringify(
-      { ranAt: new Date().toISOString(), model: 'jev-latest', fixtures: fixtures.length, inputTokens, targetPrecision: TARGET_PRECISION, checks: results },
+      {
+        ranAt: new Date().toISOString(),
+        model: MODEL,
+        fixtures: fixtures.length,
+        inputTokens,
+        targetPrecision: TARGET_PRECISION,
+        checks: results,
+      },
       null,
       2,
     ) + '\n',

@@ -32,6 +32,7 @@ export const CONFIG_PATH = join(DATA_DIR, 'config.json');
 export const LOG_PATH = join(DATA_DIR, 'prompts.jsonl');
 export const CACHE_PATH = join(DATA_DIR, 'scores.jsonl');
 export const STATE_PATH = join(DATA_DIR, 'state.json');
+export const CORRECTIONS_PATH = join(DATA_DIR, 'corrections.json');
 
 export function ensureDataDir(): void {
   mkdirSync(DATA_DIR, { recursive: true, mode: 0o700 });

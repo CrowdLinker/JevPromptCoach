@@ -18,14 +18,14 @@ interface Rule {
  */
 const CREDENTIAL_RULES: Rule[] = [
   { name: 'pem', pattern: /-----BEGIN[^-]{0,80}-----[\s\S]*?-----END[^-]{0,80}-----/g, replace: '[PEM]' },
-  { name: 'anthropic', pattern: /\bsk-ant-[A-Za-z0-9_\-]{8,}/g, replace: '[KEY]' },
-  { name: 'openai', pattern: /\bsk-(?:proj-)?[A-Za-z0-9_\-]{16,}/g, replace: '[KEY]' },
+  { name: 'anthropic', pattern: /\bsk-ant-[A-Za-z0-9_-]{8,}/g, replace: '[KEY]' },
+  { name: 'openai', pattern: /\bsk-(?:proj-)?[A-Za-z0-9_-]{16,}/g, replace: '[KEY]' },
   { name: 'github', pattern: /\bgh[pousr]_[A-Za-z0-9]{16,}/g, replace: '[KEY]' },
   { name: 'aws', pattern: /\b(?:AKIA|ASIA)[A-Z0-9]{16}\b/g, replace: '[KEY]' },
-  { name: 'google', pattern: /\bAIza[A-Za-z0-9_\-]{30,}/g, replace: '[KEY]' },
-  { name: 'slack', pattern: /\bxox[abprs]-[A-Za-z0-9\-]{10,}/g, replace: '[KEY]' },
-  { name: 'jwt', pattern: /\beyJ[A-Za-z0-9_\-]{8,}\.[A-Za-z0-9_\-]{8,}\.[A-Za-z0-9_\-]{8,}/g, replace: '[JWT]' },
-  { name: 'bearer', pattern: /\b[Bb]earer\s+[A-Za-z0-9._\-]{12,}/g, replace: 'Bearer [KEY]' },
+  { name: 'google', pattern: /\bAIza[A-Za-z0-9_-]{30,}/g, replace: '[KEY]' },
+  { name: 'slack', pattern: /\bxox[abprs]-[A-Za-z0-9-]{10,}/g, replace: '[KEY]' },
+  { name: 'jwt', pattern: /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/g, replace: '[JWT]' },
+  { name: 'bearer', pattern: /\b[Bb]earer\s+[A-Za-z0-9._-]{12,}/g, replace: 'Bearer [KEY]' },
   {
     name: 'azure-client-secret',
     // Azure client secrets carry a '~' mid-token, which is vanishingly rare in
@@ -39,20 +39,22 @@ const CREDENTIAL_RULES: Rule[] = [
     // A secret introduced by a label: "value - x", "Secret: x", "client secret = x".
     // The separator must be ':', '=' or a spaced hyphen, and the value may not
     // contain '/', so a path like secret-client/app/main.ts is not a match.
-    pattern: /\b(value|secret|password|passwd|token|api[ _-]?key|client[ _-]?secret)\b\s*(?::|=|-\s)\s*(['"`]?)([^\s'"`,;/\\]{12,})\2/gi,
+    pattern:
+      /\b(value|secret|password|passwd|token|api[ _-]?key|client[ _-]?secret)\b\s*(?::|=|-\s)\s*(['"`]?)([^\s'"`,;/\\]{12,})\2/gi,
     replace: (m: string) => m.replace(/((?::|=|-\s)\s*['"`]?)([^\s'"`,;/\\]{12,})/, '$1[REDACTED]'),
   },
   {
     name: 'assigned-secret',
     // KEY=value / "api_key": "value" / TOKEN: value
-    pattern: /\b([A-Za-z_][A-Za-z0-9_]*(?:KEY|TOKEN|SECRET|PASSWORD|PASSWD|CREDENTIAL)S?)\b(\s*[:=]\s*)(['"]?)([^\s'"`,;]{6,})\3/gi,
+    pattern:
+      /\b([A-Za-z_][A-Za-z0-9_]*(?:KEY|TOKEN|SECRET|PASSWORD|PASSWD|CREDENTIAL)S?)\b(\s*[:=]\s*)(['"]?)([^\s'"`,;]{6,})\3/gi,
     replace: (m: string) => m.replace(/([:=]\s*['"]?)([^\s'"`,;]{6,})/, '$1[REDACTED]'),
   },
 ];
 
 const EMAIL_RULE: Rule = {
   name: 'email',
-  pattern: /\b[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}\b/g,
+  pattern: /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g,
   replace: '[EMAIL]',
 };
 
@@ -72,7 +74,7 @@ const PATH_RULES: Rule[] = [
   },
   {
     name: 'absolute',
-    pattern: /(?<![\w~])\/(?:[A-Za-z0-9._\-]+\/){2,}[A-Za-z0-9._\-]*/g,
+    pattern: /(?<![\w~])\/(?:[A-Za-z0-9._-]+\/){2,}[A-Za-z0-9._-]*/g,
     replace: (m: string) => {
       const base = m.split('/').filter(Boolean).pop() ?? '';
       return base ? `…/${base}` : '…/';
@@ -83,9 +85,12 @@ const PATH_RULES: Rule[] = [
 function applyRules(text: string, rules: Rule[]): string {
   let out = text;
   for (const rule of rules) {
-    out = typeof rule.replace === 'function'
-      ? out.replace(rule.pattern, rule.replace as (m: string) => string)
-      : out.replace(rule.pattern, rule.replace);
+    // The branches look identical because String.replace has separate overloads
+    // for a string and a function replacement, and the union satisfies neither.
+    out =
+      typeof rule.replace === 'function'
+        ? out.replace(rule.pattern, rule.replace)
+        : out.replace(rule.pattern, rule.replace);
   }
   return out;
 }

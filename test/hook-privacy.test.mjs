@@ -31,9 +31,15 @@ before(async () => {
   captured = [];
   server = createServer((req, res) => {
     let body = '';
-    req.on('data', (c) => { body += c; });
+    req.on('data', (c) => {
+      body += c;
+    });
     req.on('end', () => {
-      try { captured.push(JSON.parse(body)); } catch { captured.push({ unparsed: body }); }
+      try {
+        captured.push(JSON.parse(body));
+      } catch {
+        captured.push({ unparsed: body });
+      }
       const parsed = JSON.parse(body);
       const answers = {};
       for (const k of Object.keys(parsed.questions ?? {})) answers[k] = { type: 'noul', noul: 0.01 };
@@ -64,7 +70,9 @@ function runHook(privacy, prompt = PROMPT) {
     env: { ...process.env, HOME: home, TYPESAFE_BASE_URL: `http://127.0.0.1:${port}` },
   });
   let stdout = '';
-  child.stdout.on('data', (c) => { stdout += c; });
+  child.stdout.on('data', (c) => {
+    stdout += c;
+  });
   child.stdin.end(JSON.stringify({ session_id: 's', cwd: '/tmp/d', hook_event_name: 'UserPromptSubmit', prompt }));
   return new Promise((resolve) => {
     child.on('close', (status) => {
@@ -99,7 +107,9 @@ test('the hook never exits non-zero, even with unusable input', async () => {
     const r = await new Promise((resolve) => {
       const child = spawn(process.execPath, ['dist/hook.js']);
       let stdout = '';
-      child.stdout.on('data', (c) => { stdout += c; });
+      child.stdout.on('data', (c) => {
+        stdout += c;
+      });
       child.stdin.end(input);
       child.on('close', (status) => resolve({ status, stdout }));
     });

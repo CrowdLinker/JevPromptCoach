@@ -9,10 +9,10 @@
  */
 import { readFileSync } from 'node:fs';
 import { loadConfig } from './config.js';
-import { applyPrivacy } from './redact.js';
-import { skipReason } from './skip.js';
 import { promptHash } from './hash.js';
 import { appendLog, type LogEntry } from './log.js';
+import { applyPrivacy } from './redact.js';
+import { skipReason } from './skip.js';
 
 interface HookInput {
   session_id?: string;
@@ -60,8 +60,9 @@ async function main(): Promise<void> {
     text: stored,
     features,
     source: 'hook',
-    project: input.cwd?.split('/').filter(Boolean).pop(),
   };
+  const project = input.cwd?.split('/').filter(Boolean).pop();
+  if (project) entry.project = project;
 
   try {
     appendLog(entry);

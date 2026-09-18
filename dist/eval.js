@@ -2,14 +2,16 @@
 import {
   CHECKS,
   GATES,
+  MODEL,
+  USD_PER_INPUT_TOKEN,
   scoreMany
-} from "./chunk-VF2RHVF5.js";
+} from "./chunk-BD4OHVLJ.js";
 import {
   apiKey
-} from "./chunk-DQOMOEZG.js";
+} from "./chunk-JBKH57J6.js";
 
 // src/eval.ts
-import { readFileSync, writeFileSync, existsSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 function metricsFor(rows, positive) {
   const tp = rows.filter((r) => r.predicted === positive && r.truth === positive).length;
   const fp = rows.filter((r) => r.predicted === positive && r.truth !== positive).length;
@@ -55,7 +57,8 @@ async function main() {
 `)
       }
     );
-    writeFileSync(cachePath, JSON.stringify({ inputTokens, records }, null, 1) + "\n");
+    writeFileSync(cachePath, `${JSON.stringify({ inputTokens, records }, null, 1)}
+`);
   }
   const byId = new Map(records.map((r) => [r.hash, r]));
   const missing = fixtures.filter((f) => !byId.has(f.id));
@@ -97,13 +100,19 @@ async function main() {
       rows.push({ truth, predicted: p >= def.threshold });
       raw.push({ truth, p });
     }
-    const fail = metricsFor(rows.map((r) => ({ truth: !r.truth, predicted: !r.predicted })), true);
+    const fail = metricsFor(
+      rows.map((r) => ({ truth: !r.truth, predicted: !r.predicted })),
+      true
+    );
     const pass = metricsFor(rows, true);
     let best = def.threshold;
     if (tune) {
       let bestScore = -1;
       for (let t = 0.05; t <= 0.95; t += 0.05) {
-        const tuned = metricsFor(raw.map((r) => ({ truth: !r.truth, predicted: r.p < t })), true);
+        const tuned = metricsFor(
+          raw.map((r) => ({ truth: !r.truth, predicted: r.p < t })),
+          true
+        );
         if (tuned.precision === null || tuned.support < MIN_SUPPORT) continue;
         const score = tuned.precision >= TUNING_PRECISION ? 1 + (tuned.recall ?? 0) + tuned.precision / 100 : tuned.precision;
         if (score > bestScore) {
@@ -142,7 +151,10 @@ async function main() {
       let thr = def.threshold;
       let bestScore = -1;
       for (let t = 0.05; t <= 0.95; t += 0.05) {
-        const m = metricsFor(train.map((r) => ({ truth: !r.truth, predicted: r.p < t })), true);
+        const m = metricsFor(
+          train.map((r) => ({ truth: !r.truth, predicted: r.p < t })),
+          true
+        );
         if (m.precision === null) continue;
         const score = m.precision >= TUNING_PRECISION ? 1 + (m.recall ?? 0) : m.precision;
         if (score > bestScore) {
@@ -154,13 +166,11 @@ async function main() {
     }
     const cv = metricsFor(held, true);
     cvResults[def.id] = { precision: cv.precision, recall: cv.recall, support: cv.support };
-    lines.push(
-      `  ${def.id.padEnd(20)}  ${fmt(cv.precision)}  ${fmt(cv.recall)} ${String(cv.support).padStart(2)}`
-    );
+    lines.push(`  ${def.id.padEnd(20)}  ${fmt(cv.precision)}  ${fmt(cv.recall)} ${String(cv.support).padStart(2)}`);
   }
   results["_crossValidated"] = cvResults;
   lines.push("");
-  lines.push(`Input tokens: ${inputTokens.toLocaleString()}  (~$${(inputTokens * 0.042 / 1e6).toFixed(4)})`);
+  lines.push(`Input tokens: ${inputTokens.toLocaleString()}  (~$${(inputTokens * USD_PER_INPUT_TOKEN).toFixed(4)})`);
   lines.push(
     allClear ? `All measurable checks clear fail-precision ${TARGET_PRECISION}.` : `At least one measurable check is below fail-precision ${TARGET_PRECISION}.`
   );
@@ -169,7 +179,14 @@ async function main() {
   writeFileSync(
     "test/eval-results.json",
     JSON.stringify(
-      { ranAt: (/* @__PURE__ */ new Date()).toISOString(), model: "jev-latest", fixtures: fixtures.length, inputTokens, targetPrecision: TARGET_PRECISION, checks: results },
+      {
+        ranAt: (/* @__PURE__ */ new Date()).toISOString(),
+        model: MODEL,
+        fixtures: fixtures.length,
+        inputTokens,
+        targetPrecision: TARGET_PRECISION,
+        checks: results
+      },
       null,
       2
     ) + "\n"

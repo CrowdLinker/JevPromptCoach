@@ -2,18 +2,21 @@
 import {
   promptHash,
   skipReason
-} from "./chunk-AMURQLF6.js";
+} from "./chunk-F3M3WE3B.js";
 import {
   applyPrivacy
-} from "./chunk-CZRZPMXP.js";
+} from "./chunk-VM4R2HGT.js";
 import {
   appendLogMany,
   appendScores,
-  clearLog,
+  clearLocalData,
   compactScores,
+  hasText,
+  readCorrections,
   readLog,
-  readScores
-} from "./chunk-H3A3BY5V.js";
+  readScores,
+  writeCorrections
+} from "./chunk-RC2GUYJC.js";
 import {
   CHECKS,
   CORRECTION_QUESTION,
@@ -21,20 +24,24 @@ import {
   USD_PER_INPUT_TOKEN,
   ask,
   clampPrompt,
+  estimateScoringTokens,
   estimateTokens,
   interpret,
+  runPool,
   scoreMany,
   scoreOne
-} from "./chunk-VF2RHVF5.js";
+} from "./chunk-BD4OHVLJ.js";
 import {
-  DATA_DIR,
   ENV_PATH,
   LOG_PATH,
   apiKey,
   apiKeySource,
   loadConfig,
   saveConfig
-} from "./chunk-DQOMOEZG.js";
+} from "./chunk-JBKH57J6.js";
+
+// src/cli.ts
+import { readFileSync, writeFileSync } from "node:fs";
 
 // src/correction.ts
 var REQUEST_TOKEN_BUDGET = 4e4;
@@ -43,7 +50,7 @@ var MAX_PAIR_GAP_MS = 30 * 60 * 1e3;
 function buildPairs(entries) {
   const bySession = /* @__PURE__ */ new Map();
   for (const entry of entries) {
-    if (entry.text === null) continue;
+    if (!hasText(entry)) continue;
     const list = bySession.get(entry.session);
     if (list) list.push(entry);
     else bySession.set(entry.session, [entry]);
@@ -51,16 +58,12 @@ function buildPairs(entries) {
   const pairs = [];
   for (const list of bySession.values()) {
     list.sort((a, b) => a.ts.localeCompare(b.ts));
-    for (let i = 0; i + 1 < list.length; i += 1) {
-      const first = list[i];
-      const second = list[i + 1];
+    for (const [index, first] of list.entries()) {
+      const second = list[index + 1];
+      if (!second) break;
       const gap = Date.parse(second.ts) - Date.parse(first.ts);
       if (!Number.isFinite(gap) || gap < 0 || gap > MAX_PAIR_GAP_MS) continue;
-      pairs.push({
-        hash: first.hash,
-        first: clampPrompt(first.text),
-        second: clampPrompt(second.text)
-      });
+      pairs.push({ hash: first.hash, first: clampPrompt(first.text), second: clampPrompt(second.text) });
     }
   }
   return pairs;
@@ -70,62 +73,137 @@ function planPairBatches(pairs) {
     CORRECTION_QUESTION.instructions + CORRECTION_QUESTION.criteria.true + CORRECTION_QUESTION.criteria.false
   );
   const batches = [];
-  let current = [];
-  let tokens = 0;
+  let current = { pairs: [], tokens: 0 };
   for (const pair of pairs) {
     const cost = estimateTokens(pair.first + pair.second) + perQuestion + 20;
-    if (current.length > 0 && (current.length >= MAX_PAIRS_PER_REQUEST || tokens + cost > REQUEST_TOKEN_BUDGET)) {
+    const wouldOverflow = current.pairs.length > 0 && (current.pairs.length >= MAX_PAIRS_PER_REQUEST || current.tokens + cost > REQUEST_TOKEN_BUDGET);
+    if (wouldOverflow) {
       batches.push(current);
-      current = [];
-      tokens = 0;
+      current = { pairs: [], tokens: 0 };
     }
-    current.push(pair);
-    tokens += cost;
+    current.pairs.push(pair);
+    current.tokens += cost;
   }
-  if (current.length > 0) batches.push(current);
+  if (current.pairs.length > 0) batches.push(current);
   return batches;
 }
+function estimateCorrectionTokens(pairs) {
+  return planPairBatches(pairs).reduce((sum, batch) => sum + batch.tokens, 0);
+}
+async function judgeBatch(batch, options) {
+  const state = {
+    conversations: batch.pairs.map((pair, i) => ({
+      id: `c${i}`,
+      first_message: pair.first,
+      second_message: pair.second
+    }))
+  };
+  const questions = {};
+  batch.pairs.forEach((_, i) => {
+    questions[`c${i}`] = {
+      type: "noul",
+      instructions: `Consider only the conversation with id "c${i}" in the state. ${CORRECTION_QUESTION.instructions}`,
+      criteria: CORRECTION_QUESTION.criteria
+    };
+  });
+  const answers = await ask(state, questions, { timeoutMs: 6e4, onUsage: options.onUsage });
+  const records = [];
+  batch.pairs.forEach((pair, i) => {
+    const p = answers[`c${i}`];
+    if (p !== void 0)
+      records.push({ hash: pair.hash, corrected: p >= CORRECTION_QUESTION.threshold, probability: p });
+  });
+  return records;
+}
 async function detectCorrections(pairs, options = {}) {
-  const batches = planPairBatches(pairs);
-  const concurrency = Math.max(1, Math.min(options.concurrency ?? 6, batches.length || 1));
-  const results = [];
-  let next = 0;
-  let done = 0;
-  async function worker() {
-    for (; ; ) {
-      const index = next++;
-      const batch = batches[index];
-      if (!batch) return;
-      const state = {
-        conversations: batch.map((pair, i) => ({
-          id: `c${i}`,
-          first_message: pair.first,
-          second_message: pair.second
-        }))
-      };
-      const questions = {};
-      batch.forEach((_, i) => {
-        questions[`c${i}`] = {
-          type: "noul",
-          instructions: `Consider only the conversation with id "c${i}" in the state. ${CORRECTION_QUESTION.instructions}`,
-          criteria: CORRECTION_QUESTION.criteria
-        };
-      });
-      try {
-        const answers = await ask(state, questions, { timeoutMs: 6e4, onUsage: options.onUsage });
-        batch.forEach((pair, i) => {
-          const p = answers[`c${i}`];
-          if (p === void 0) return;
-          results.push({ hash: pair.hash, corrected: p >= CORRECTION_QUESTION.threshold, probability: p });
-        });
-      } catch {
+  return runPool(
+    planPairBatches(pairs),
+    options.concurrency ?? 6,
+    (batch) => judgeBatch(batch, options),
+    options.onProgress
+  );
+}
+
+// src/history.ts
+import { readdirSync, statSync, createReadStream, existsSync } from "node:fs";
+import { join } from "node:path";
+import { homedir } from "node:os";
+import { createInterface } from "node:readline";
+var PROJECTS_DIR = join(homedir(), ".claude", "projects");
+function textOf(content) {
+  if (typeof content === "string") return content;
+  if (Array.isArray(content)) {
+    return content.filter((b) => typeof b === "object" && b !== null).filter((b) => b.type === "text").map((b) => b.text ?? "").join("\n");
+  }
+  return "";
+}
+function hasToolResult(content) {
+  return Array.isArray(content) && content.some((b) => typeof b === "object" && b !== null && b.type === "tool_result");
+}
+function isHumanPrompt(record) {
+  if (record.type !== "user") return false;
+  if (record.isSidechain || record.isMeta) return false;
+  if (hasToolResult(record.message?.content)) return false;
+  const source = record.promptSource;
+  if (source !== void 0) return source === "typed";
+  return true;
+}
+function listTranscripts(dir = PROJECTS_DIR) {
+  if (!existsSync(dir)) return [];
+  const files = [];
+  for (const project of readdirSync(dir)) {
+    const projectDir = join(dir, project);
+    try {
+      if (!statSync(projectDir).isDirectory()) continue;
+      for (const file of readdirSync(projectDir)) {
+        if (file.endsWith(".jsonl")) files.push(join(projectDir, file));
       }
-      done += 1;
-      options.onProgress?.(done, batches.length);
+    } catch {
     }
   }
-  await Promise.all(Array.from({ length: concurrency }, worker));
-  return results;
+  return files;
+}
+function stripPreamble(text) {
+  return text.replace(/^\s*<system_instruction>[\s\S]*?<\/system_instruction>\s*/g, "").replace(/<ide_selection>[\s\S]*?<\/ide_selection>/g, "").trim();
+}
+async function readTranscript(path, out2) {
+  const project = path.split("/").slice(-2, -1)[0] ?? "unknown";
+  const stream = createReadStream(path, { encoding: "utf8" });
+  const lines = createInterface({ input: stream, crlfDelay: Infinity });
+  try {
+    for await (const line of lines) {
+      if (!line.trim()) continue;
+      let record;
+      try {
+        record = JSON.parse(line);
+      } catch {
+        continue;
+      }
+      if (!isHumanPrompt(record)) continue;
+      const text = stripPreamble(textOf(record.message?.content));
+      if (!text) continue;
+      out2.push({
+        ts: record.timestamp ?? (/* @__PURE__ */ new Date(0)).toISOString(),
+        session: record.sessionId ?? path,
+        text,
+        project
+      });
+    }
+  } finally {
+    lines.close();
+    stream.destroy();
+  }
+}
+async function readHistory(dir = PROJECTS_DIR) {
+  const prompts = [];
+  for (const file of listTranscripts(dir)) {
+    try {
+      await readTranscript(file, prompts);
+    } catch {
+    }
+  }
+  prompts.sort((a, b) => a.ts.localeCompare(b.ts));
+  return prompts;
 }
 
 // src/report.ts
@@ -225,14 +303,12 @@ function buildReport(input) {
     trendDelta = Math.round(mean(tail) - mean(head));
   }
   const signalValidated = checkStats.some((c) => c.significant);
+  const weight = (c) => (1 - c.hitRate) * (signalValidated && c.significant ? 1 + Math.max(0, c.gap ?? 0) : 1);
   const candidates = checkStats.filter((c) => c.applicable >= 10);
-  const focus = candidates.length === 0 ? null : candidates.slice().sort((a, b) => {
-    const weight = (c) => (1 - c.hitRate) * (signalValidated && c.significant ? 1 + Math.max(0, c.gap ?? 0) : 1);
-    return weight(b) - weight(a);
-  })[0];
+  const focus = candidates.length === 0 ? null : candidates.reduce((best, c) => weight(c) > weight(best) ? c : best);
   const scoreValues = scored.map((e) => perPromptScore.get(e.hash)).filter((s) => typeof s === "number");
   const judged = scored.filter((e) => corrections.has(e.hash));
-  const correctedCount = judged.filter((e) => corrections.get(e.hash).corrected).length;
+  const correctedCount = judged.filter((e) => corrections.get(e.hash)?.corrected).length;
   const sorted = scored.map((e) => e.ts).sort();
   return {
     promptsConsidered: entries.length,
@@ -343,12 +419,8 @@ function renderReport(report, requested) {
   if (!report.correction.available) {
     lines.push("Not measured yet for these prompts. A backfill fills this in.");
   } else {
-    lines.push(
-      `${pct(report.correction.overallRate ?? 0)} of your prompts were followed by you correcting or`
-    );
-    lines.push(
-      `redirecting the agent, across ${report.correction.judged} back-to-back pairs of messages.`
-    );
+    lines.push(`${pct(report.correction.overallRate ?? 0)} of your prompts were followed by you correcting or`);
+    lines.push(`redirecting the agent, across ${report.correction.judged} back-to-back pairs of messages.`);
     lines.push("");
     if (report.correction.signalValidated) {
       const winners = report.checks.filter((c) => c.significant);
@@ -365,11 +437,8 @@ function renderReport(report, requested) {
   if (report.focus) {
     lines.push("## Work on this one", "");
     lines.push(`${report.focus.label} \u2014 you do this ${pct(report.focus.hitRate)} of the time.`);
-    const def = report.checks.find((c) => c.id === report.focus.id);
-    if (def && report.focus.significant && report.focus.gap !== null) {
-      lines.push(
-        `Prompts that miss it are corrected ${Math.round(report.focus.gap * 100)} points more often.`
-      );
+    if (report.focus.significant && report.focus.gap !== null) {
+      lines.push(`Prompts that miss it are corrected ${Math.round(report.focus.gap * 100)} points more often.`);
     }
     lines.push("");
     lines.push("That is the one to change. Leave the rest alone until it moves.");
@@ -378,91 +447,6 @@ function renderReport(report, requested) {
     lines.push("it applied to. A prompt is only judged on the habits that fit it.");
   }
   return lines.join("\n");
-}
-
-// src/history.ts
-import { readdirSync, statSync, createReadStream, existsSync } from "node:fs";
-import { join } from "node:path";
-import { homedir } from "node:os";
-import { createInterface } from "node:readline";
-var PROJECTS_DIR = join(homedir(), ".claude", "projects");
-function textOf(content) {
-  if (typeof content === "string") return content;
-  if (Array.isArray(content)) {
-    return content.filter((b) => typeof b === "object" && b !== null).filter((b) => b.type === "text").map((b) => b.text ?? "").join("\n");
-  }
-  return "";
-}
-function hasToolResult(content) {
-  return Array.isArray(content) && content.some(
-    (b) => typeof b === "object" && b !== null && b.type === "tool_result"
-  );
-}
-function isHumanPrompt(record) {
-  if (record.type !== "user") return false;
-  if (record.isSidechain || record.isMeta) return false;
-  if (hasToolResult(record.message?.content)) return false;
-  const source = record.promptSource;
-  if (source !== void 0) return source === "typed";
-  return true;
-}
-function listTranscripts(dir = PROJECTS_DIR) {
-  if (!existsSync(dir)) return [];
-  const files = [];
-  for (const project of readdirSync(dir)) {
-    const projectDir = join(dir, project);
-    try {
-      if (!statSync(projectDir).isDirectory()) continue;
-      for (const file of readdirSync(projectDir)) {
-        if (file.endsWith(".jsonl")) files.push(join(projectDir, file));
-      }
-    } catch {
-    }
-  }
-  return files;
-}
-function stripPreamble(text) {
-  return text.replace(/^\s*<system_instruction>[\s\S]*?<\/system_instruction>\s*/g, "").replace(/<ide_selection>[\s\S]*?<\/ide_selection>/g, "").trim();
-}
-async function readTranscript(path, out2) {
-  const project = path.split("/").slice(-2, -1)[0] ?? "unknown";
-  const stream = createReadStream(path, { encoding: "utf8" });
-  const lines = createInterface({ input: stream, crlfDelay: Infinity });
-  try {
-    for await (const line of lines) {
-      if (!line.trim()) continue;
-      let record;
-      try {
-        record = JSON.parse(line);
-      } catch {
-        continue;
-      }
-      if (!isHumanPrompt(record)) continue;
-      const text = stripPreamble(textOf(record.message?.content));
-      if (!text) continue;
-      out2.push({
-        ts: record.timestamp ?? (/* @__PURE__ */ new Date(0)).toISOString(),
-        session: record.sessionId ?? path,
-        text,
-        project,
-        cwd: record.cwd
-      });
-    }
-  } finally {
-    lines.close();
-    stream.destroy();
-  }
-}
-async function readHistory(dir = PROJECTS_DIR) {
-  const prompts = [];
-  for (const file of listTranscripts(dir)) {
-    try {
-      await readTranscript(file, prompts);
-    } catch {
-    }
-  }
-  prompts.sort((a, b) => a.ts.localeCompare(b.ts));
-  return prompts;
 }
 
 // src/cli.ts
@@ -489,18 +473,7 @@ function requireKey() {
   out("Your logged prompts are untouched and nothing was sent.");
   return false;
 }
-function estimateScoringCost(texts) {
-  const questionOverhead = [...CHECKS, ...GATES].reduce(
-    (sum, q) => sum + estimateTokens(q.instructions + q.criteria.true + q.criteria.false + 40),
-    0
-  );
-  const tokens = texts.reduce((sum, t) => sum + estimateTokens(clampPrompt(t)) + questionOverhead, 0);
-  return { tokens, usd: tokens * USD_PER_INPUT_TOKEN };
-}
-function estimateCorrectionCost(pairs) {
-  const tokens = pairs.reduce((sum, p) => sum + estimateTokens(p.first + p.second) + 120, 0);
-  return { tokens, usd: tokens * USD_PER_INPUT_TOKEN };
-}
+var usd = (tokens) => `$${(tokens * USD_PER_INPUT_TOKEN).toFixed(4)}`;
 async function cmdScore(argv, stdinText) {
   const text = (stdinText ?? argv.join(" ")).trim();
   if (!text) {
@@ -546,27 +519,29 @@ async function cmdReport(argv) {
   const requested = Math.max(1, Number.parseInt(argv[0] ?? "200", 10) || 200);
   const entries = readLog();
   if (entries.length === 0) {
-    out(renderReport(
-      {
-        promptsConsidered: 0,
-        promptsScored: 0,
-        sessions: 0,
-        from: null,
-        to: null,
-        meanScore: null,
-        checks: [],
-        trend: [],
-        trendDelta: null,
-        focus: null,
-        correction: { available: false, judged: 0, overallRate: null, signalValidated: false }
-      },
-      requested
-    ));
+    out(
+      renderReport(
+        {
+          promptsConsidered: 0,
+          promptsScored: 0,
+          sessions: 0,
+          from: null,
+          to: null,
+          meanScore: null,
+          checks: [],
+          trend: [],
+          trendDelta: null,
+          focus: null,
+          correction: { available: false, judged: 0, overallRate: null, signalValidated: false }
+        },
+        requested
+      )
+    );
     return;
   }
   const window = entries.slice(-requested);
   const scores = readScores();
-  const unscored = window.filter((e) => e.text !== null && !scores.has(e.hash));
+  const unscored = window.filter(hasText).filter((e) => !scores.has(e.hash));
   if (unscored.length > 0 && !apiKey()) {
     process.stderr.write(
       `TYPESAFE_API_KEY is not set, so ${unscored.length} newer prompts could not be scored.
@@ -574,8 +549,8 @@ Reporting on what is already scored. Nothing was sent.
 `
     );
   } else if (unscored.length > 0) {
-    const cost = estimateScoringCost(unscored.map((e) => e.text));
-    process.stderr.write(`Scoring ${unscored.length} new prompts (~$${cost.usd.toFixed(4)})\u2026
+    const tokens = estimateScoringTokens(unscored.map((e) => e.text));
+    process.stderr.write(`Scoring ${unscored.length} new prompts (~${usd(tokens)})\u2026
 `);
     const records = await scoreMany(
       unscored.map((e) => ({ hash: e.hash, text: e.text })),
@@ -585,15 +560,7 @@ Reporting on what is already scored. Nothing was sent.
     for (const record of records) scores.set(record.hash, record);
     process.stderr.write("\n");
   }
-  const corrections = /* @__PURE__ */ new Map();
-  try {
-    const cached = JSON.parse(
-      (await import("node:fs")).readFileSync(`${DATA_DIR}/corrections.json`, "utf8")
-    );
-    for (const record of cached) corrections.set(record.hash, record);
-  } catch {
-  }
-  out(renderReport(buildReport({ entries: window, scores, corrections }), requested));
+  out(renderReport(buildReport({ entries: window, scores, corrections: readCorrections() }), requested));
 }
 async function cmdBackfill(argv) {
   const confirmed = argv.includes("--confirm");
@@ -609,8 +576,6 @@ async function cmdBackfill(argv) {
   }
   const existing = new Set(readLog().map((e) => e.hash));
   const fresh = selected.filter((p) => !existing.has(promptHash(p.text)));
-  const texts = fresh.map((p) => applyPrivacy(p.text, config.privacy).text ?? "");
-  const scoringCost = estimateScoringCost(texts.filter(Boolean));
   const provisional = fresh.map((p) => {
     const { text, features } = applyPrivacy(p.text, config.privacy);
     return {
@@ -623,9 +588,10 @@ async function cmdBackfill(argv) {
       project: p.project
     };
   });
+  const sendable = provisional.filter(hasText).map((e) => ({ hash: e.hash, text: e.text }));
+  const scoringTokens = estimateScoringTokens(sendable.map((e) => e.text));
   const pairs = buildPairs(provisional);
-  const correctionCost = estimateCorrectionCost(pairs);
-  const total = scoringCost.usd + correctionCost.usd;
+  const correctionTokens = estimateCorrectionTokens(pairs);
   if (!confirmed) {
     out("# Backfill estimate");
     out("");
@@ -634,12 +600,14 @@ async function cmdBackfill(argv) {
     out(`New (not already logged): ${fresh.length}`);
     out(`Correction-rate pairs:    ${pairs.length}`);
     out("");
-    out(`Scoring:     ~${scoringCost.tokens.toLocaleString()} input tokens  ~$${scoringCost.usd.toFixed(4)}`);
-    out(`Corrections: ~${correctionCost.tokens.toLocaleString()} input tokens  ~$${correctionCost.usd.toFixed(4)}`);
-    out(`Total:       ~$${total.toFixed(4)}  (Jev charges input tokens only; output is free)`);
+    out(`Scoring:     ~${scoringTokens.toLocaleString()} input tokens  ~${usd(scoringTokens)}`);
+    out(`Corrections: ~${correctionTokens.toLocaleString()} input tokens  ~${usd(correctionTokens)}`);
+    out(`Total:       ~${usd(scoringTokens + correctionTokens)}  (Jev charges input tokens only; output is free)`);
     out("");
     out(`Privacy level in force: ${config.privacy}.`);
-    out(config.privacy === "redact" ? "Paths, emails and credential-shaped strings are stripped before anything is sent." : config.privacy === "metadata_only" ? "No prompt text will be sent. Derived features only \u2014 and scoring needs text, so this will score nothing." : "RAW: prompt text is sent as written, with credential-shaped strings still stripped.");
+    out(
+      config.privacy === "redact" ? "Paths, emails and credential-shaped strings are stripped before anything is sent." : config.privacy === "metadata_only" ? "No prompt text will be sent. Derived features only \u2014 and scoring needs text, so this will score nothing." : "RAW: prompt text is sent as written, with credential-shaped strings still stripped."
+    );
     out("");
     out("Nothing has been sent. To go ahead, run the command again and confirm.");
     return;
@@ -654,15 +622,12 @@ async function cmdBackfill(argv) {
   process.stderr.write(`Scoring ${fresh.length} prompts\u2026
 `);
   let usedTokens = 0;
-  const records = await scoreMany(
-    provisional.filter((e) => e.text).map((e) => ({ hash: e.hash, text: e.text })),
-    {
-      onUsage: (u) => {
-        usedTokens += u.input_tokens;
-      },
-      onProgress: (d, t) => process.stderr.write(`  scoring batch ${d}/${t}\r`)
-    }
-  );
+  const records = await scoreMany(sendable, {
+    onUsage: (u) => {
+      usedTokens += u.input_tokens;
+    },
+    onProgress: (d, t) => process.stderr.write(`  scoring batch ${d}/${t}\r`)
+  });
   appendScores(records);
   compactScores();
   process.stderr.write("\n");
@@ -675,22 +640,15 @@ async function cmdBackfill(argv) {
     onProgress: (d, t) => process.stderr.write(`  correction batch ${d}/${t}\r`)
   });
   process.stderr.write("\n");
-  const fs = await import("node:fs");
-  const path = `${DATA_DIR}/corrections.json`;
-  let merged = [];
-  try {
-    merged = JSON.parse(fs.readFileSync(path, "utf8"));
-  } catch {
-  }
-  const byHash = new Map(merged.map((c) => [c.hash, c]));
-  for (const record of corrections) byHash.set(record.hash, record);
-  fs.writeFileSync(path, JSON.stringify([...byHash.values()]), { mode: 384 });
+  const merged = readCorrections();
+  for (const record of corrections) merged.set(record.hash, record);
+  writeCorrections(merged.values());
   saveConfig({ ...config, lastBackfill: (/* @__PURE__ */ new Date()).toISOString(), setupComplete: true });
   out("# Backfill complete");
   out("");
   out(`Prompts logged and scored: ${records.length}`);
   out(`Prompt pairs judged:       ${corrections.length}`);
-  out(`Input tokens billed:       ${usedTokens.toLocaleString()}  (~$${(usedTokens * USD_PER_INPUT_TOKEN).toFixed(4)})`);
+  out(`Input tokens billed:       ${usedTokens.toLocaleString()}  (~${usd(usedTokens)})`);
   out("");
   out("Run /jevpromptcoach:report to see it.");
 }
@@ -701,13 +659,17 @@ async function cmdConfig(argv) {
     const scores = readScores();
     out("# JevPromptCoach configuration");
     out("");
-    out(`Mode:            ${config.mode}${config.mode === "on-demand" ? "  (hook only logs; zero added latency)" : "  (hook also scores and prints one line)"}`);
+    out(
+      `Mode:            ${config.mode}${config.mode === "on-demand" ? "  (hook only logs; zero added latency)" : "  (hook also scores and prints one line)"}`
+    );
     out(`Privacy:         ${config.privacy}`);
     out(`Bypass prefix:   ${config.bypassPrefix}  (a prompt starting with this is never logged or scored)`);
     out(`Always timeout:  ${config.alwaysTimeoutMs} ms`);
     out(`Last backfill:   ${config.lastBackfill ?? "never"}`);
     const source = apiKeySource();
-    out(`API key:         ${source === "environment" ? "set (TYPESAFE_API_KEY in the environment)" : source === "key file" ? `set (${ENV_PATH})` : "NOT SET \u2014 no scoring is possible"}`);
+    out(
+      `API key:         ${source === "environment" ? "set (TYPESAFE_API_KEY in the environment)" : source === "key file" ? `set (${ENV_PATH})` : "NOT SET \u2014 no scoring is possible"}`
+    );
     out("");
     out(`Log:             ${LOG_PATH}`);
     out(`Prompts logged:  ${entries.length}`);
@@ -759,11 +721,7 @@ async function cmdConfig(argv) {
     return;
   }
   if (key === "clear") {
-    clearLog();
-    try {
-      (await import("node:fs")).writeFileSync(`${DATA_DIR}/corrections.json`, "[]", { mode: 384 });
-    } catch {
-    }
+    clearLocalData();
     out("Local log, score cache and correction records deleted.");
     return;
   }
@@ -792,7 +750,10 @@ async function cmdFixturesInit(argv) {
   const picked = [];
   for (const bucket of buckets) {
     const step = Math.max(1, Math.floor(bucket.length / perBucket));
-    for (let i = 0; i < bucket.length && picked.length < count; i += step) picked.push(bucket[i]);
+    for (let i = 0; i < bucket.length && picked.length < count; i += step) {
+      const prompt = bucket[i];
+      if (prompt) picked.push(prompt);
+    }
   }
   const fixtures = picked.slice(0, count).map((p, i) => ({
     id: `p${String(i).padStart(2, "0")}`,
@@ -800,8 +761,8 @@ async function cmdFixturesInit(argv) {
     labels: Object.fromEntries(CHECKS.map((c) => [c.id, null])),
     gates: Object.fromEntries(GATES.map((g) => [g.id, null]))
   }));
-  const fs = await import("node:fs");
-  fs.writeFileSync(outPath, JSON.stringify(fixtures, null, 1) + "\n");
+  writeFileSync(outPath, `${JSON.stringify(fixtures, null, 1)}
+`);
   out(`Wrote ${fixtures.length} unlabelled fixtures to ${outPath}.`);
   out("");
   out("Nothing was sent anywhere. Label them by hand from the criteria in");
@@ -811,15 +772,17 @@ async function cmdFixturesInit(argv) {
 function cmdStatus() {
   const config = loadConfig();
   const entries = readLog();
-  out(JSON.stringify({
-    setupComplete: config.setupComplete,
-    mode: config.mode,
-    privacy: config.privacy,
-    hasKey: Boolean(apiKey()),
-    logged: entries.length,
-    scored: readScores().size,
-    lastBackfill: config.lastBackfill
-  }));
+  out(
+    JSON.stringify({
+      setupComplete: config.setupComplete,
+      mode: config.mode,
+      privacy: config.privacy,
+      hasKey: Boolean(apiKey()),
+      logged: entries.length,
+      scored: readScores().size,
+      lastBackfill: config.lastBackfill
+    })
+  );
 }
 var [command, ...rest] = process.argv.slice(2);
 var run = async () => {
@@ -827,7 +790,6 @@ var run = async () => {
     case "score":
       return cmdScore(rest);
     case "score-stdin": {
-      const { readFileSync } = await import("node:fs");
       let text = "";
       try {
         text = readFileSync(0, "utf8");

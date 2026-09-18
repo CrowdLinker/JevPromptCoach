@@ -471,7 +471,7 @@ in CI on every pull request. `--no-verify` skips the hook, not CI.
 
 ```
 npm install          # also points git at the repo's hooks
-npm test             # build, tests, leak scan — no API key, no network
+npm test             # build, lint, tests, leak scan — no API key, no network
 npm run typecheck
 node dist/cli.js fixtures-init   # build your own eval set, locally, from your history
 npm run eval                     # calls Jev; ~$0.002 for 40 prompts

@@ -54,6 +54,10 @@ easy to break with a change that looks reasonable.
 - **Node 22 is the floor.** Claude Code is a native binary and brings no Node of
   its own, so the user's Node runs the hook. Raising the esbuild target further
   breaks users for no gain — nothing here needs an API newer than 22.
+- **TypeScript stays on 6.x for now.** typescript-eslint parses with the
+  JavaScript compiler API, which the TypeScript 7 package no longer ships; its
+  supported range is below 6.1. Dependabot is told to skip TypeScript majors.
+  Lift both when typescript-eslint's peer range includes 7.
 
 ## Where things live
 
@@ -94,10 +98,10 @@ checkout with `claude plugin marketplace add ./`: it takes the name
 
 ## Checks before you finish
 
-Run `npm test` — it builds, runs the tests and runs the leak scan, and needs no
-API key. Run `npm run typecheck`. Only run `npm run eval` if a key is present and
-the user has agreed to spend on it; it costs about $0.002 and a backfill costs
-about $0.06.
+Run `npm test` — it builds, lints, runs the tests and runs the leak scan, and
+needs no API key. Run `npm run typecheck`. Only run `npm run eval` if a key is
+present and the user has agreed to spend on it; it costs about $0.002 and a
+backfill costs about $0.06.
 
 Anything that sends the user's history to the API needs explicit confirmation
 first, with a cost estimate. The backfill command already works this way — keep
@@ -106,4 +110,6 @@ it that way.
 ## Style
 
 ASCII apostrophes everywhere, never the typographic one, including in French
-copy and UI strings. Comments explain why, not what.
+copy and UI strings. Comments explain why, not what. Prettier owns formatting
+and ESLint owns the rest: `npm run format` rewrites, `npm run lint` checks, and
+CI runs the check.

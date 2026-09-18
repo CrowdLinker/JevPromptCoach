@@ -6,19 +6,44 @@
 const MIN_CHARS = 15;
 
 const ACKNOWLEDGEMENTS = new Set([
-  'yes', 'no', 'y', 'n', 'ok', 'okay', 'k', 'sure', 'yep', 'yeah', 'nope',
-  'continue', 'go', 'go ahead', 'proceed', 'next', 'stop', 'wait', 'done',
-  'thanks', 'thank you', 'ty', 'please', 'do it', 'try again', 'retry',
-  'fix it', 'again', 'good', 'nice', 'perfect', 'great', 'cool', 'hmm',
+  'yes',
+  'no',
+  'y',
+  'n',
+  'ok',
+  'okay',
+  'k',
+  'sure',
+  'yep',
+  'yeah',
+  'nope',
+  'continue',
+  'go',
+  'go ahead',
+  'proceed',
+  'next',
+  'stop',
+  'wait',
+  'done',
+  'thanks',
+  'thank you',
+  'ty',
+  'please',
+  'do it',
+  'try again',
+  'retry',
+  'fix it',
+  'again',
+  'good',
+  'nice',
+  'perfect',
+  'great',
+  'cool',
+  'hmm',
 ]);
 
 export type SkipReason =
-  | 'too_short'
-  | 'slash_command'
-  | 'acknowledgement'
-  | 'bypass_prefix'
-  | 'command_wrapper'
-  | 'session_meta';
+  'too_short' | 'slash_command' | 'acknowledgement' | 'bypass_prefix' | 'command_wrapper' | 'session_meta';
 
 export function skipReason(text: string, bypassPrefix = '*'): SkipReason | null {
   const trimmed = text.trim();
@@ -27,7 +52,11 @@ export function skipReason(text: string, bypassPrefix = '*'): SkipReason | null 
   if (trimmed.startsWith('/')) return 'slash_command';
 
   // Claude Code writes these into the transcript itself; they are not prompts.
-  if (/^<(command-name|command-message|command-args|local-command-stdout|bash-input|bash-stdout|user-memory-input)/.test(trimmed)) {
+  if (
+    /^<(command-name|command-message|command-args|local-command-stdout|bash-input|bash-stdout|user-memory-input)/.test(
+      trimmed,
+    )
+  ) {
     return 'command_wrapper';
   }
   if (trimmed.startsWith('This session is being continued from a previous conversation')) {

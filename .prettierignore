@@ -1,0 +1,11 @@
+# Only code is formatted. Docs, manifests, generated eval results and the
+# committed bundle are left exactly as written.
+dist/
+docs/
+commands/
+hooks/
+.claude-plugin/
+.github/
+*.md
+test/eval-results.json
+test/fixtures/

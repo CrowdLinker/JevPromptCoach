@@ -7,9 +7,10 @@
  * what one question would. Batching on top of that is what makes a backfill
  * over thousands of prompts affordable.
  */
-import { CHECKS, GATES, CHECK_BY_ID, type CheckId, type CheckDef } from './checks.js';
-import { ask, tryAsk, estimateTokens, type NoulQuestion, type Usage, MODEL } from './jev.js';
+import { CHECKS, type CheckDef, type CheckId, GATES, type GateId } from './checks.js';
+import { ask, estimateTokens, MODEL, type NoulQuestion, tryAsk, type Usage } from './jev.js';
 import type { ScoreRecord } from './log.js';
+import { runPool } from './pool.js';
 
 /** Total context is 64k for state plus every question; stay well inside it. */
 const REQUEST_TOKEN_BUDGET = 48_000;
@@ -33,7 +34,7 @@ export interface PromptScore {
   /** Passing checks over applicable checks, 0-100. Null when nothing applied. */
   score: number | null;
   checks: CheckResult[];
-  gates: Record<string, number>;
+  gates: Partial<Record<GateId, number>>;
 }
 
 /** Keep the head and tail: a verification command is often the last line. */
@@ -64,82 +65,91 @@ function questionsFor(id: string): Record<string, NoulQuestion> {
 
 function questionTokens(questions: Record<string, NoulQuestion>): number {
   return Object.values(questions).reduce(
-    (sum, q) => sum + estimateTokens(q.instructions + (q.criteria ? q.criteria.true + q.criteria.false : '')),
+    (sum, q) => sum + estimateTokens(q.instructions + q.criteria.true + q.criteria.false),
     0,
   );
 }
 
-export interface ScoreInput { hash: string; text: string }
+export interface ScoreInput {
+  hash: string;
+  text: string;
+}
 
-interface Batch { items: { key: string; input: ScoreInput }[] }
+interface Batch {
+  items: { key: string; input: ScoreInput }[];
+  /** Estimated input tokens for the request: state plus every question. */
+  tokens: number;
+}
 
 /** Pack prompts into requests that fit both the total and the state-only budget. */
 export function planBatches(inputs: ScoreInput[]): Batch[] {
   const batches: Batch[] = [];
-  let current: Batch = { items: [] };
+  let current: Batch = { items: [], tokens: 0 };
   let stateTokens = 0;
-  let totalTokens = 0;
 
   inputs.forEach((input, index) => {
     const key = `m${index}`;
     const text = clampPrompt(input.text);
     const itemStateTokens = estimateTokens(text) + 12;
-    const itemQuestionTokens = questionTokens(questionsFor(key));
+    const itemTokens = itemStateTokens + questionTokens(questionsFor(key));
 
     const wouldOverflow =
       current.items.length > 0 &&
       (current.items.length >= MAX_PROMPTS_PER_REQUEST ||
         stateTokens + itemStateTokens > STATE_TOKEN_BUDGET ||
-        totalTokens + itemStateTokens + itemQuestionTokens > REQUEST_TOKEN_BUDGET);
+        current.tokens + itemTokens > REQUEST_TOKEN_BUDGET);
 
     if (wouldOverflow) {
       batches.push(current);
-      current = { items: [] };
+      current = { items: [], tokens: 0 };
       stateTokens = 0;
-      totalTokens = 0;
     }
 
     current.items.push({ key, input: { hash: input.hash, text } });
     stateTokens += itemStateTokens;
-    totalTokens += itemStateTokens + itemQuestionTokens;
+    current.tokens += itemTokens;
   });
 
   if (current.items.length > 0) batches.push(current);
   return batches;
 }
 
+/**
+ * Input tokens a scoring pass over these prompts would bill, taken from the
+ * batches it would actually send so a pre-flight quote cannot drift from the
+ * request behind it.
+ */
+export function estimateScoringTokens(texts: string[]): number {
+  const inputs = texts.map((text, index) => ({ hash: String(index), text }));
+  return planBatches(inputs).reduce((sum, batch) => sum + batch.tokens, 0);
+}
+
 /** Turn raw probabilities into verdicts, honouring the applicability gates. */
 export function interpret(
   hash: string,
   probabilities: Partial<Record<CheckId, number>>,
-  gates: Record<string, number>,
+  gates: Partial<Record<GateId, number>>,
   opts: { inlineSafe?: boolean } = {},
 ): PromptScore {
-  const checks: CheckResult[] = CHECKS.map((def) => {
+  const checks = CHECKS.map((def): CheckResult => {
     const gate = def.appliesWhen;
     if (gate) {
       const gateValue = gates[gate.gate];
       if (gateValue === undefined || gateValue < gate.minProbability) {
-        return { id: def.id, label: def.label, verdict: 'n/a' as Verdict, probability: null, def };
+        return { id: def.id, label: def.label, verdict: 'n/a', probability: null, def };
       }
     }
     const p = probabilities[def.id];
     if (p === undefined) {
-      return { id: def.id, label: def.label, verdict: 'undecided' as Verdict, probability: null, def };
+      return { id: def.id, label: def.label, verdict: 'undecided', probability: null, def };
     }
     // In the inline path a check we cannot stand behind, or a finding sitting
     // near the threshold, is dropped rather than shown: a false positive there
     // interrupts every message.
     if (opts.inlineSafe && (!def.inlineEligible || Math.abs(p - def.threshold) < def.inlineMargin)) {
-      return { id: def.id, label: def.label, verdict: 'undecided' as Verdict, probability: p, def };
+      return { id: def.id, label: def.label, verdict: 'undecided', probability: p, def };
     }
-    return {
-      id: def.id,
-      label: def.label,
-      verdict: p >= def.threshold ? 'pass' : 'fail',
-      probability: p,
-      def,
-    };
+    return { id: def.id, label: def.label, verdict: p >= def.threshold ? 'pass' : 'fail', probability: p, def };
   });
 
   const decided = checks.filter((c) => c.verdict === 'pass' || c.verdict === 'fail');
@@ -157,10 +167,22 @@ export interface ScoreRunOptions {
   onProgress?: (done: number, total: number) => void;
 }
 
-async function runBatch(
-  batch: Batch,
-  options: ScoreRunOptions,
-): Promise<ScoreRecord[]> {
+/** Pull one prompt's probabilities and gate values out of a batched answer set. */
+function unpack(answers: Record<string, number>, key: string, hash: string, ts: string): ScoreRecord {
+  const probabilities: Partial<Record<CheckId, number>> = {};
+  const gates: Partial<Record<GateId, number>> = {};
+  for (const check of CHECKS) {
+    const value = answers[`${key}__${check.id}`];
+    if (value !== undefined) probabilities[check.id] = value;
+  }
+  for (const gate of GATES) {
+    const value = answers[`${key}__${gate.id}`];
+    if (value !== undefined) gates[gate.id] = value;
+  }
+  return { hash, ts, probabilities, gates, model: MODEL };
+}
+
+async function runBatch(batch: Batch, options: ScoreRunOptions): Promise<ScoreRecord[]> {
   const state = {
     messages: batch.items.map((item) => ({ id: item.key, text: item.input.text })),
   };
@@ -173,49 +195,17 @@ async function runBatch(
   });
 
   const now = new Date().toISOString();
-  return batch.items.map((item) => {
-    const probabilities: Partial<Record<CheckId, number>> = {};
-    const gates: Record<string, number> = {};
-    for (const check of CHECKS) {
-      const value = answers[`${item.key}__${check.id}`];
-      if (value !== undefined) probabilities[check.id] = value;
-    }
-    for (const gate of GATES) {
-      const value = answers[`${item.key}__${gate.id}`];
-      if (value !== undefined) gates[gate.id] = value;
-    }
-    return { hash: item.input.hash, ts: now, probabilities, gates, model: MODEL };
-  });
+  return batch.items.map((item) => unpack(answers, item.key, item.input.hash, now));
 }
 
 /** Score many prompts. Batches that fail are dropped, not retried forever. */
-export async function scoreMany(
-  inputs: ScoreInput[],
-  options: ScoreRunOptions = {},
-): Promise<ScoreRecord[]> {
-  const batches = planBatches(inputs);
-  const concurrency = Math.max(1, Math.min(options.concurrency ?? 6, batches.length || 1));
-  const results: ScoreRecord[] = [];
-  let next = 0;
-  let done = 0;
-
-  async function worker(): Promise<void> {
-    for (;;) {
-      const index = next++;
-      const batch = batches[index];
-      if (!batch) return;
-      try {
-        results.push(...(await runBatch(batch, options)));
-      } catch {
-        // Fail open: this slice of the backfill is simply missing.
-      }
-      done += 1;
-      options.onProgress?.(done, batches.length);
-    }
-  }
-
-  await Promise.all(Array.from({ length: concurrency }, worker));
-  return results;
+export async function scoreMany(inputs: ScoreInput[], options: ScoreRunOptions = {}): Promise<ScoreRecord[]> {
+  return runPool(
+    planBatches(inputs),
+    options.concurrency ?? 6,
+    (batch) => runBatch(batch, options),
+    options.onProgress,
+  );
 }
 
 /** Score a single prompt. Used by /jevpromptcoach:score and by `always` mode. */
@@ -224,27 +214,11 @@ export async function scoreOne(
   hash: string,
   options: { timeoutMs?: number; inlineSafe?: boolean } = {},
 ): Promise<{ record: ScoreRecord; result: PromptScore } | null> {
-  const clamped = clampPrompt(text);
-  const answers = await tryAsk(
-    { messages: [{ id: 'm0', text: clamped }] },
-    questionsFor('m0'),
-    { timeoutMs: options.timeoutMs ?? 20_000 },
-  );
+  const answers = await tryAsk({ messages: [{ id: 'm0', text: clampPrompt(text) }] }, questionsFor('m0'), {
+    timeoutMs: options.timeoutMs ?? 20_000,
+  });
   if (!answers) return null;
 
-  const probabilities: Partial<Record<CheckId, number>> = {};
-  const gates: Record<string, number> = {};
-  for (const check of CHECKS) {
-    const value = answers[`m0__${check.id}`];
-    if (value !== undefined) probabilities[check.id] = value;
-  }
-  for (const gate of GATES) {
-    const value = answers[`m0__${gate.id}`];
-    if (value !== undefined) gates[gate.id] = value;
-  }
-
-  const record: ScoreRecord = { hash, ts: new Date().toISOString(), probabilities, gates, model: MODEL };
-  return { record, result: interpret(hash, probabilities, gates, { inlineSafe: options.inlineSafe }) };
+  const record = unpack(answers, 'm0', hash, new Date().toISOString());
+  return { record, result: interpret(hash, record.probabilities, record.gates, options) };
 }
-
-export { CHECK_BY_ID };

@@ -11,8 +11,9 @@
  */
 import { CORRECTION_QUESTION } from './checks.js';
 import { ask, estimateTokens, type NoulQuestion, type Usage } from './jev.js';
+import { type CorrectionRecord, hasText, type LogEntry, type TextEntry } from './log.js';
+import { runPool } from './pool.js';
 import { clampPrompt } from './score.js';
-import type { LogEntry } from './log.js';
 
 const REQUEST_TOKEN_BUDGET = 40_000;
 const MAX_PAIRS_PER_REQUEST = 30;
@@ -26,59 +27,62 @@ export interface Pair {
   second: string;
 }
 
-export interface CorrectionRecord {
-  hash: string;
-  corrected: boolean;
-  probability: number;
-}
-
 /** Consecutive same-session prompt pairs, in order. */
 export function buildPairs(entries: LogEntry[]): Pair[] {
-  const bySession = new Map<string, LogEntry[]>();
+  const bySession = new Map<string, TextEntry[]>();
   for (const entry of entries) {
-    if (entry.text === null) continue; // metadata_only carries no text to compare
+    if (!hasText(entry)) continue; // metadata_only carries no text to compare
     const list = bySession.get(entry.session);
-    if (list) list.push(entry); else bySession.set(entry.session, [entry]);
+    if (list) list.push(entry);
+    else bySession.set(entry.session, [entry]);
   }
 
   const pairs: Pair[] = [];
   for (const list of bySession.values()) {
     list.sort((a, b) => a.ts.localeCompare(b.ts));
-    for (let i = 0; i + 1 < list.length; i += 1) {
-      const first = list[i]!;
-      const second = list[i + 1]!;
+    for (const [index, first] of list.entries()) {
+      const second = list[index + 1];
+      if (!second) break;
       const gap = Date.parse(second.ts) - Date.parse(first.ts);
       if (!Number.isFinite(gap) || gap < 0 || gap > MAX_PAIR_GAP_MS) continue;
-      pairs.push({
-        hash: first.hash,
-        first: clampPrompt(first.text!),
-        second: clampPrompt(second.text!),
-      });
+      pairs.push({ hash: first.hash, first: clampPrompt(first.text), second: clampPrompt(second.text) });
     }
   }
   return pairs;
 }
 
-function planPairBatches(pairs: Pair[]): Pair[][] {
+interface PairBatch {
+  pairs: Pair[];
+  /** Estimated input tokens for the request: both messages of every pair, plus the question each time. */
+  tokens: number;
+}
+
+function planPairBatches(pairs: Pair[]): PairBatch[] {
   const perQuestion = estimateTokens(
     CORRECTION_QUESTION.instructions + CORRECTION_QUESTION.criteria.true + CORRECTION_QUESTION.criteria.false,
   );
-  const batches: Pair[][] = [];
-  let current: Pair[] = [];
-  let tokens = 0;
+  const batches: PairBatch[] = [];
+  let current: PairBatch = { pairs: [], tokens: 0 };
 
   for (const pair of pairs) {
     const cost = estimateTokens(pair.first + pair.second) + perQuestion + 20;
-    if (current.length > 0 && (current.length >= MAX_PAIRS_PER_REQUEST || tokens + cost > REQUEST_TOKEN_BUDGET)) {
+    const wouldOverflow =
+      current.pairs.length > 0 &&
+      (current.pairs.length >= MAX_PAIRS_PER_REQUEST || current.tokens + cost > REQUEST_TOKEN_BUDGET);
+    if (wouldOverflow) {
       batches.push(current);
-      current = [];
-      tokens = 0;
+      current = { pairs: [], tokens: 0 };
     }
-    current.push(pair);
-    tokens += cost;
+    current.pairs.push(pair);
+    current.tokens += cost;
   }
-  if (current.length > 0) batches.push(current);
+  if (current.pairs.length > 0) batches.push(current);
   return batches;
+}
+
+/** Input tokens judging these pairs would bill, taken from the batches that would be sent. */
+export function estimateCorrectionTokens(pairs: Pair[]): number {
+  return planPairBatches(pairs).reduce((sum, batch) => sum + batch.tokens, 0);
 }
 
 export interface CorrectionOptions {
@@ -87,52 +91,39 @@ export interface CorrectionOptions {
   onProgress?: (done: number, total: number) => void;
 }
 
+async function judgeBatch(batch: PairBatch, options: CorrectionOptions): Promise<CorrectionRecord[]> {
+  const state = {
+    conversations: batch.pairs.map((pair, i) => ({
+      id: `c${i}`,
+      first_message: pair.first,
+      second_message: pair.second,
+    })),
+  };
+  const questions: Record<string, NoulQuestion> = {};
+  batch.pairs.forEach((_, i) => {
+    questions[`c${i}`] = {
+      type: 'noul',
+      instructions: `Consider only the conversation with id "c${i}" in the state. ${CORRECTION_QUESTION.instructions}`,
+      criteria: CORRECTION_QUESTION.criteria,
+    };
+  });
+
+  const answers = await ask(state, questions, { timeoutMs: 60_000, onUsage: options.onUsage });
+  const records: CorrectionRecord[] = [];
+  batch.pairs.forEach((pair, i) => {
+    const p = answers[`c${i}`];
+    if (p !== undefined)
+      records.push({ hash: pair.hash, corrected: p >= CORRECTION_QUESTION.threshold, probability: p });
+  });
+  return records;
+}
+
 /** Judge every pair. Failures drop out rather than aborting the run. */
-export async function detectCorrections(
-  pairs: Pair[],
-  options: CorrectionOptions = {},
-): Promise<CorrectionRecord[]> {
-  const batches = planPairBatches(pairs);
-  const concurrency = Math.max(1, Math.min(options.concurrency ?? 6, batches.length || 1));
-  const results: CorrectionRecord[] = [];
-  let next = 0;
-  let done = 0;
-
-  async function worker(): Promise<void> {
-    for (;;) {
-      const index = next++;
-      const batch = batches[index];
-      if (!batch) return;
-      const state = {
-        conversations: batch.map((pair, i) => ({
-          id: `c${i}`,
-          first_message: pair.first,
-          second_message: pair.second,
-        })),
-      };
-      const questions: Record<string, NoulQuestion> = {};
-      batch.forEach((_, i) => {
-        questions[`c${i}`] = {
-          type: 'noul',
-          instructions: `Consider only the conversation with id "c${i}" in the state. ${CORRECTION_QUESTION.instructions}`,
-          criteria: CORRECTION_QUESTION.criteria,
-        };
-      });
-
-      try {
-        const answers = await ask(state, questions, { timeoutMs: 60_000, onUsage: options.onUsage });
-        batch.forEach((pair, i) => {
-          const p = answers[`c${i}`];
-          if (p === undefined) return;
-          results.push({ hash: pair.hash, corrected: p >= CORRECTION_QUESTION.threshold, probability: p });
-        });
-      } catch { /* this slice is missing */ }
-
-      done += 1;
-      options.onProgress?.(done, batches.length);
-    }
-  }
-
-  await Promise.all(Array.from({ length: concurrency }, worker));
-  return results;
+export async function detectCorrections(pairs: Pair[], options: CorrectionOptions = {}): Promise<CorrectionRecord[]> {
+  return runPool(
+    planPairBatches(pairs),
+    options.concurrency ?? 6,
+    (batch) => judgeBatch(batch, options),
+    options.onProgress,
+  );
 }

@@ -39,7 +39,7 @@ Never resolve a blocked push by clicking GitHub's "allow this secret" link.
 
 ```
 npm install        # also points git at the repo's hooks
-npm test           # build, tests, leak scan — no API key needed
+npm test           # build, lint, tests, leak scan — no API key needed
 ```
 
 `npm test` needs no TypeSafe key and makes no network calls. Only the eval does.
@@ -131,9 +131,18 @@ what replaces the lockfile here.
 whatever the user has installed runs the hook. CI tests 22 and 24. Do not reach
 for a newer API without raising the floor deliberately and saying so.
 
+**TypeScript stays on 6.x for now.** typescript-eslint parses with the
+JavaScript compiler API, which the TypeScript 7 package no longer ships; its
+supported range is below 6.1. Dependabot is told to skip TypeScript majors, and
+both can be lifted when typescript-eslint's peer range includes 7.
+
 ## Style
 
 Use the ASCII apostrophe, never the typographic one, everywhere — code,
 comments, commit messages, and user-facing copy.
 
 Comments should say why, not what. Match the surrounding code.
+
+Prettier owns formatting and ESLint owns the rest. `npm run format` rewrites,
+`npm run lint` checks, and CI runs the check, so a pull request that fails it
+is a formatting run away from passing.

@@ -7,9 +7,8 @@
  * that is really noise is worse than no outcome signal.
  */
 import { CHECKS, type CheckId } from './checks.js';
+import type { CorrectionRecord, LogEntry, ScoreRecord } from './log.js';
 import { interpret, type Verdict } from './score.js';
-import type { LogEntry, ScoreRecord } from './log.js';
-import type { CorrectionRecord } from './correction.js';
 
 export interface CheckStat {
   id: CheckId;
@@ -30,7 +29,11 @@ export interface CheckStat {
   significant: boolean;
 }
 
-export interface TrendPoint { day: string; score: number; count: number }
+export interface TrendPoint {
+  day: string;
+  score: number;
+  count: number;
+}
 
 export interface Report {
   promptsConsidered: number;
@@ -59,9 +62,7 @@ function normalCdf(z: number): number {
   const t = 1 / (1 + 0.3275911 * x);
   const y =
     1 -
-    ((((1.061405429 * t - 1.453152027) * t + 1.421413741) * t - 0.284496736) * t + 0.254829592) *
-      t *
-      Math.exp(-x * x);
+    ((((1.061405429 * t - 1.453152027) * t + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t * Math.exp(-x * x);
   return 0.5 * (1 + sign * y);
 }
 
@@ -133,9 +134,7 @@ export function buildReport(input: BuildReportInput): Report {
     const correctionWhenPass = passSample >= 1 ? passCorrected / passSample : null;
     const correctionWhenFail = failSample >= 1 ? failCorrected / failSample : null;
     const gap =
-      correctionWhenPass !== null && correctionWhenFail !== null
-        ? correctionWhenFail - correctionWhenPass
-        : null;
+      correctionWhenPass !== null && correctionWhenFail !== null ? correctionWhenFail - correctionWhenPass : null;
     const pValue =
       passSample >= MIN_SAMPLE_PER_ARM && failSample >= MIN_SAMPLE_PER_ARM
         ? twoProportionP(failCorrected, failSample, passCorrected, passSample)
@@ -189,24 +188,16 @@ export function buildReport(input: BuildReportInput): Report {
   // One focus habit. Worst hit rate weighted by the outcome gap where the gap
   // is real; by hit rate alone where it is not.
   const signalValidated = checkStats.some((c) => c.significant);
+  const weight = (c: CheckStat): number =>
+    (1 - c.hitRate) * (signalValidated && c.significant ? 1 + Math.max(0, c.gap ?? 0) : 1);
   const candidates = checkStats.filter((c) => c.applicable >= 10);
-  const focus =
-    candidates.length === 0
-      ? null
-      : candidates
-          .slice()
-          .sort((a, b) => {
-            const weight = (c: CheckStat) =>
-              (1 - c.hitRate) * (signalValidated && c.significant ? 1 + Math.max(0, c.gap ?? 0) : 1);
-            return weight(b) - weight(a);
-          })[0]!;
+  // A tie goes to the earlier check: that is the order the habits are taught in.
+  const focus = candidates.length === 0 ? null : candidates.reduce((best, c) => (weight(c) > weight(best) ? c : best));
 
-  const scoreValues = scored
-    .map((e) => perPromptScore.get(e.hash))
-    .filter((s): s is number => typeof s === 'number');
+  const scoreValues = scored.map((e) => perPromptScore.get(e.hash)).filter((s): s is number => typeof s === 'number');
 
   const judged = scored.filter((e) => corrections.has(e.hash));
-  const correctedCount = judged.filter((e) => corrections.get(e.hash)!.corrected).length;
+  const correctedCount = judged.filter((e) => corrections.get(e.hash)?.corrected).length;
 
   const sorted = scored.map((e) => e.ts).sort();
 
@@ -216,9 +207,7 @@ export function buildReport(input: BuildReportInput): Report {
     sessions: new Set(scored.map((e) => e.session)).size,
     from: sorted[0] ?? null,
     to: sorted[sorted.length - 1] ?? null,
-    meanScore: scoreValues.length
-      ? Math.round(scoreValues.reduce((a, b) => a + b, 0) / scoreValues.length)
-      : null,
+    meanScore: scoreValues.length ? Math.round(scoreValues.reduce((a, b) => a + b, 0) / scoreValues.length) : null,
     checks: checkStats,
     trend,
     trendDelta,

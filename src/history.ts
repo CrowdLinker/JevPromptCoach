@@ -18,7 +18,6 @@ export interface HistoryPrompt {
   session: string;
   text: string;
   project: string;
-  cwd?: string;
 }
 
 export const PROJECTS_DIR = join(homedir(), '.claude', 'projects');
@@ -48,8 +47,9 @@ function textOf(content: unknown): string {
 }
 
 function hasToolResult(content: unknown): boolean {
-  return Array.isArray(content) && content.some(
-    (b) => typeof b === 'object' && b !== null && (b as { type?: string }).type === 'tool_result',
+  return (
+    Array.isArray(content) &&
+    content.some((b) => typeof b === 'object' && b !== null && (b as { type?: string }).type === 'tool_result')
   );
 }
 
@@ -77,7 +77,9 @@ export function listTranscripts(dir = PROJECTS_DIR): string[] {
       for (const file of readdirSync(projectDir)) {
         if (file.endsWith('.jsonl')) files.push(join(projectDir, file));
       }
-    } catch { /* unreadable project dir */ }
+    } catch {
+      /* unreadable project dir */
+    }
   }
   return files;
 }
@@ -98,7 +100,11 @@ async function readTranscript(path: string, out: HistoryPrompt[]): Promise<void>
     for await (const line of lines) {
       if (!line.trim()) continue;
       let record: TranscriptRecord;
-      try { record = JSON.parse(line) as TranscriptRecord; } catch { continue; }
+      try {
+        record = JSON.parse(line) as TranscriptRecord;
+      } catch {
+        continue;
+      }
       if (!isHumanPrompt(record)) continue;
       const text = stripPreamble(textOf(record.message?.content));
       if (!text) continue;
@@ -107,7 +113,6 @@ async function readTranscript(path: string, out: HistoryPrompt[]): Promise<void>
         session: record.sessionId ?? path,
         text,
         project,
-        cwd: record.cwd,
       });
     }
   } finally {
@@ -120,7 +125,11 @@ async function readTranscript(path: string, out: HistoryPrompt[]): Promise<void>
 export async function readHistory(dir = PROJECTS_DIR): Promise<HistoryPrompt[]> {
   const prompts: HistoryPrompt[] = [];
   for (const file of listTranscripts(dir)) {
-    try { await readTranscript(file, prompts); } catch { /* skip unreadable file */ }
+    try {
+      await readTranscript(file, prompts);
+    } catch {
+      /* skip unreadable file */
+    }
   }
   prompts.sort((a, b) => a.ts.localeCompare(b.ts));
   return prompts;

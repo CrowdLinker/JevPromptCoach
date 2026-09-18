@@ -55,6 +55,11 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      # ESLint with type-aware rules over src/, plain ESLint over the scripts and
+      # tests, and Prettier in check mode. Formatting is never fixed in CI.
+      - name: Lint
+        run: npm run lint
+
       - name: Build
         run: npm run build
 

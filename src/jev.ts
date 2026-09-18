@@ -2,24 +2,26 @@
  * The only network dependency. Everything here fails open: a caller that gets
  * `null` back prints nothing and exits 0. No error from this module ever
  * carries the API key, including the SDK's own error messages.
+ *
+ * Types come from the SDK rather than from a copy kept here, so a wire-format
+ * change surfaces as a type error in this file instead of a silent mismatch.
+ * Type imports are erased at build time; nothing on the hook path loads the SDK.
  */
+import type { EntryType, NoulQuestion as SdkNoulQuestion, Usage } from '@typesafe-ai/sdk';
 import { apiKey } from './config.js';
 
 export const MODEL = 'jev-latest';
 
-export interface NoulAnswer { type: 'noul'; noul: number }
-export interface Usage { input_tokens: number; output_tokens: number }
-export interface JevResult {
-  model: string;
-  answers: Record<string, NoulAnswer>;
-  usage: Usage;
+/**
+ * The SDK accepts structured instructions and criteria. This plugin only ever
+ * sends text, and the token estimate in src/score.ts relies on that.
+ */
+export interface NoulQuestion extends SdkNoulQuestion {
+  instructions: string;
+  criteria: { true: string; false: string };
 }
 
-export interface NoulQuestion {
-  type: 'noul';
-  instructions: string;
-  criteria?: { true: string; false: string };
-}
+export type { Usage };
 
 export class JevUnavailable extends Error {}
 
@@ -49,13 +51,13 @@ function safeMessage(err: unknown): string {
   const key = apiKey();
   let msg = err instanceof Error ? err.message : String(err);
   if (key && key.length > 4) msg = msg.split(key).join('[REDACTED]');
-  return msg.replace(/\b(sk-[A-Za-z0-9_\-]+|Bearer\s+\S+)/g, '[REDACTED]').slice(0, 300);
+  return msg.replace(/\b(sk-[A-Za-z0-9_-]+|Bearer\s+\S+)/g, '[REDACTED]').slice(0, 300);
 }
 
 export interface AskOptions {
   timeoutMs?: number;
   /** Called with the token usage of each successful request. */
-  onUsage?: (usage: Usage) => void;
+  onUsage?: ((usage: Usage) => void) | undefined;
 }
 
 /**
@@ -64,24 +66,21 @@ export interface AskOptions {
  * about what a single question costs.
  */
 export async function ask(
-  state: unknown,
+  state: EntryType,
   questions: Record<string, NoulQuestion>,
   options: AskOptions = {},
 ): Promise<Record<string, number>> {
   const timeoutMs = options.timeoutMs ?? 30_000;
   const c = await client(timeoutMs);
   try {
-    const result = (await c.systemOne({
-      state: state as never,
-      questions: questions as never,
-      model: MODEL,
-    })) as unknown as JevResult;
+    const result = await c.systemOne({ state, questions, model: MODEL });
 
     options.onUsage?.(result.usage);
 
+    // The type promises a number for every answer; the wire does not have to keep it.
     const out: Record<string, number> = {};
     for (const [id, answer] of Object.entries(result.answers)) {
-      if (answer && typeof answer.noul === 'number') out[id] = answer.noul;
+      if (typeof answer?.noul === 'number') out[id] = answer.noul;
     }
     return out;
   } catch (err) {
@@ -91,7 +90,7 @@ export async function ask(
 
 /** `ask`, but never throws. Returns null on any failure. */
 export async function tryAsk(
-  state: unknown,
+  state: EntryType,
   questions: Record<string, NoulQuestion>,
   options: AskOptions = {},
 ): Promise<Record<string, number> | null> {

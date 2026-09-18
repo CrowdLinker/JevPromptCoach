@@ -1,7 +1,7 @@
 {
   "name": "jevpromptcoach",
   "displayName": "JevPromptCoach",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "JevPromptCoach scores how well you prompt a coding agent and shows your habits improving over time. Runs on TypeSafe's Jev model.",
   "license": "MIT",
   "keywords": [

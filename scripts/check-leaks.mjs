@@ -62,7 +62,7 @@ function looksLikeAssignedSecret(line) {
   if (!m) return false;
   const quoted = m[1] !== '';
   const value = m[2];
-  if (/[()[\]{}$<>]/.test(value)) return false;   // it is an expression, not a literal
+  if (/[()[\]{}$<>]/.test(value)) return false; // it is an expression, not a literal
   if (value.includes('..') || value.endsWith('.')) return false;
   // SCREAMING_SNAKE_CASE is an env var name or a constant, not a secret:
   // `apiKey: "TYPESAFE_API_KEY"` names the variable that holds the key.
@@ -99,7 +99,11 @@ function contentOf(path) {
   // Staged content, not the working tree — they can differ, and what gets
   // committed is what is staged.
   if (staged) {
-    try { return git(['show', `:${path}`]); } catch { return null; }
+    try {
+      return git(['show', `:${path}`]);
+    } catch {
+      return null;
+    }
   }
   return existsSync(path) ? readFileSync(path, 'utf8') : null;
 }
@@ -114,7 +118,11 @@ for (const path of trackedFiles()) {
   }
 
   let content;
-  try { content = contentOf(path); } catch { continue; }
+  try {
+    content = contentOf(path);
+  } catch {
+    continue;
+  }
   if (content === null) continue;
   // Skip anything that is not text.
   if (content.includes('\u0000')) continue;
