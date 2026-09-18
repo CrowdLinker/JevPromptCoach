@@ -255,13 +255,16 @@ Measured cost: **27–31 ms** per prompt, of which ~20 ms is Node process startu
 The log append itself is well under a millisecond. This is off the network path
 entirely — it is not waiting on anything, and it cannot delay a response.
 
-### `always` — one line, non-blocking
+### `always` — a short notice, non-blocking
 
-The hook also scores the prompt and prints one line while the prompt proceeds:
+The hook also scores the prompt and prints a short notice while the prompt
+proceeds. Claude Code prefixes it with `UserPromptSubmit says:`; the rest is
+ours:
 
 ```
-JevPromptCoach: 29/100 · missing: which file or function, the verification
-steps. Run /jevpromptcoach:score to see how to fix it.
+Jev (Prompt Coach) - 29/100
+Missing: which file or function, the verification steps.
+/jevpromptcoach:score shows how to fix each one.
 ```
 
 Guarantees:

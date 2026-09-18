@@ -23,8 +23,10 @@ function format(result: PromptScore): string | null {
   // `shortfall` rather than `label`: the label says what the habit is, and this
   // sentence needs what is absent from the prompt.
   const missing = worst.map((c) => c.def.shortfall).join(', ');
-  const score = result.score === null ? '' : `${result.score}/100 · `;
-  return `JevPromptCoach: ${score}missing: ${missing}. Run /jevpromptcoach:score to see how to fix it.`;
+  // Claude Code prefixes the first line with "UserPromptSubmit says:" and keeps
+  // line breaks, so the score shares that line and the detail sits under it.
+  const head = result.score === null ? 'Jev (Prompt Coach)' : `Jev (Prompt Coach) - ${result.score}/100`;
+  return `${head}\nMissing: ${missing}.\n/jevpromptcoach:score shows how to fix each one.`;
 }
 
 /**
