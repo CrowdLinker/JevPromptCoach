@@ -3,7 +3,7 @@
   Source for ../banner.png. Edit this file, then re-render:
 
     "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless \
-      --force-device-scale-factor=2 --window-size=1200,312 --hide-scrollbars \
+      --force-device-scale-factor=2 --window-size=1200,348 --hide-scrollbars \
       --screenshot=raw.png "file://$PWD/banner.html"
     magick raw.png -strip -colors 128 -define png:compression-level=9 ../banner.png
 
@@ -24,7 +24,7 @@
       html,
       body {
         width: 1200px;
-        height: 312px;
+        height: 348px;
       }
       body {
         font-family:
@@ -38,8 +38,10 @@
       }
       .plate {
         position: relative;
+        display: flex;
+        flex-direction: column;
         width: 1200px;
-        height: 312px;
+        height: 348px;
         overflow: hidden;
         background: #0b0f17;
       }
@@ -67,11 +69,41 @@
       }
       .inner {
         position: relative;
-        height: 100%;
-        padding: 48px 60px;
+        flex: 1 1 auto;
+        padding: 0 60px;
         display: flex;
         align-items: center;
         gap: 40px;
+      }
+      /* Attribution rides in the image, not only in the README that embeds it:
+         the banner is what gets screenshotted and reposted. */
+      .credit {
+        position: relative;
+        flex: 0 0 auto;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        height: 58px;
+        padding: 0 60px;
+        border-top: 1px solid rgba(255, 255, 255, 0.07);
+      }
+      .credit span {
+        font-size: 13px;
+        font-weight: 450;
+        color: #6f7c93;
+      }
+      .credit .heart {
+        display: block;
+        width: 13px;
+        height: 13px;
+        margin: 0 -2px;
+      }
+      .credit .mark {
+        display: block;
+        height: 16px;
+        width: auto;
+        margin-left: 3px;
+        opacity: 0.92;
       }
       .left {
         flex: 1 1 auto;
@@ -233,6 +265,16 @@
             <div class="meter"><i></i></div>
           </div>
         </div>
+      </div>
+      <div class="credit">
+        <span>Created with</span>
+        <svg class="heart" viewBox="0 0 24 24" fill="#fc544c" xmlns="http://www.w3.org/2000/svg">
+          <path
+            d="M12 21s-7.5-4.6-9.6-9.1C.7 8.3 2.4 4.6 6 3.7c2.2-.6 4.4.3 6 2.2 1.6-1.9 3.8-2.8 6-2.2 3.6.9 5.3 4.6 3.6 8.2C19.5 16.4 12 21 12 21z"
+          />
+        </svg>
+        <span>by</span>
+        <img class="mark" src="crowdlinker.svg" alt="Crowdlinker" />
       </div>
     </div>
   </body>
