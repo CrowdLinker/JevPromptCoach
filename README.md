@@ -1,4 +1,16 @@
-# Jev (Prompt Coach)
+<div align="center">
+
+<img src="assets/banner.png" alt="Jev (Prompt Coach) - let Jev from TypeSafe AI be your prompt coach" width="860">
+
+<p>
+  <a href="https://github.com/CrowdLinker/JevPromptCoach/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/CrowdLinker/JevPromptCoach/ci.yml?branch=main&style=flat-square&labelColor=0b0f17&color=3fb950&label=CI"></a>
+  <img alt="Node 22 or newer" src="https://img.shields.io/badge/node-22%2B-0b0f17?style=flat-square">
+  <img alt="MIT licence" src="https://img.shields.io/badge/licence-MIT-0b0f17?style=flat-square">
+</p>
+
+**English** · [Français](README.fr.md) · [Español](README.es.md)
+
+</div>
 
 Scores how well you write prompts to a coding agent, and shows whether your
 habits are improving. Runs on [TypeSafe](https://typesafe.ai)'s Jev model.
@@ -522,3 +534,13 @@ claim is that it stays out of the way.
 ## Licence
 
 MIT. See [LICENSE](LICENSE).
+
+---
+
+<div align="center">
+
+<a href="https://crowdlinker.com"><img src="assets/made-by-crowdlinker.png" alt="Created with love by Crowdlinker" width="250"></a>
+
+<sub>Measurement, not vibes. If a number here is wrong, open an issue with what you measured.</sub>
+
+</div>

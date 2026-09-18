@@ -1,0 +1,239 @@
+<!doctype html>
+<!--
+  Source for ../banner.png. Edit this file, then re-render:
+
+    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless \
+      --force-device-scale-factor=2 --window-size=1200,312 --hide-scrollbars \
+      --screenshot=raw.png "file://$PWD/banner.html"
+    magick raw.png -strip -colors 128 -define png:compression-level=9 ../banner.png
+
+  The background is a flat colour on purpose. A soft gradient here quantised to
+  visible speckle and tripled the file, and every kilobyte committed lands in
+  every user's plugin cache. -colors 128 is lossless to the eye on flat fills
+  and takes the 2400px render from 111 KB to 40 KB.
+-->
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        width: 1200px;
+        height: 312px;
+      }
+      body {
+        font-family:
+          system-ui,
+          -apple-system,
+          'Helvetica Neue',
+          Helvetica,
+          Arial,
+          sans-serif;
+        -webkit-font-smoothing: antialiased;
+      }
+      .plate {
+        position: relative;
+        width: 1200px;
+        height: 312px;
+        overflow: hidden;
+        background: #0b0f17;
+      }
+      .grid {
+        position: absolute;
+        inset: 0;
+        background-image:
+          linear-gradient(rgba(255, 255, 255, 0.032) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(255, 255, 255, 0.032) 1px, transparent 1px);
+        background-size: 40px 40px;
+      }
+      .edge {
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: 0;
+        height: 3px;
+        background: linear-gradient(
+          90deg,
+          #fc544c 0%,
+          #ff8a63 28%,
+          rgba(96, 122, 255, 0.55) 62%,
+          rgba(255, 255, 255, 0.06) 100%
+        );
+      }
+      .inner {
+        position: relative;
+        height: 100%;
+        padding: 48px 60px;
+        display: flex;
+        align-items: center;
+        gap: 40px;
+      }
+      .left {
+        flex: 1 1 auto;
+        min-width: 0;
+      }
+      .eyebrow {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 22px;
+      }
+      .eyebrow img {
+        display: block;
+        height: 21px;
+        width: auto;
+        opacity: 0.82;
+      }
+      .eyebrow .rule {
+        width: 1px;
+        height: 16px;
+        background: rgba(255, 255, 255, 0.22);
+      }
+      .eyebrow .runs {
+        font-size: 13px;
+        letter-spacing: 0.13em;
+        text-transform: uppercase;
+        color: rgba(255, 255, 255, 0.5);
+        font-weight: 550;
+      }
+      h1 {
+        font-size: 52px;
+        line-height: 1.04;
+        font-weight: 700;
+        letter-spacing: -1.6px;
+        color: #f4f7fb;
+      }
+      .tag {
+        margin-top: 14px;
+        font-size: 21px;
+        line-height: 1.42;
+        font-weight: 400;
+        color: #9aa5bb;
+        max-width: 480px;
+      }
+      .chips {
+        margin-top: 26px;
+        display: flex;
+        gap: 9px;
+        flex-wrap: wrap;
+      }
+      .chip {
+        font-size: 12.5px;
+        font-weight: 550;
+        letter-spacing: 0.01em;
+        color: #cdd6e6;
+        border: 1px solid rgba(255, 255, 255, 0.13);
+        background: rgba(255, 255, 255, 0.045);
+        border-radius: 999px;
+        padding: 6px 13px;
+      }
+      .card {
+        flex: 0 0 auto;
+        width: 404px;
+        border-radius: 12px;
+        border: 1px solid rgba(255, 255, 255, 0.11);
+        background: rgba(8, 11, 17, 0.72);
+        box-shadow: 0 22px 50px rgba(0, 0, 0, 0.45);
+        overflow: hidden;
+      }
+      .bar {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 11px 14px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        background: rgba(255, 255, 255, 0.035);
+      }
+      .dot {
+        width: 9px;
+        height: 9px;
+        border-radius: 50%;
+        background: rgba(255, 255, 255, 0.17);
+      }
+      .bar .title {
+        margin-left: 8px;
+        font-size: 11.5px;
+        letter-spacing: 0.06em;
+        color: rgba(255, 255, 255, 0.38);
+        font-weight: 550;
+      }
+      .body {
+        padding: 16px 18px 18px;
+        font-family: 'SF Mono', Menlo, Monaco, monospace;
+        font-size: 13px;
+        line-height: 1.75;
+        color: #aab6c9;
+      }
+      .body .sys {
+        color: #61708a;
+      }
+      .body .score {
+        color: #f4f7fb;
+        font-weight: 600;
+      }
+      .body .num {
+        color: #fc544c;
+        font-weight: 700;
+      }
+      .body .miss {
+        color: #8e9bb0;
+      }
+      .meter {
+        margin-top: 14px;
+        height: 4px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.09);
+        overflow: hidden;
+      }
+      .meter i {
+        display: block;
+        height: 100%;
+        width: 29%;
+        border-radius: 999px;
+        background: linear-gradient(90deg, #fc544c, #ff8a63);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="plate">
+      <div class="grid"></div>
+      <div class="edge"></div>
+      <div class="inner">
+        <div class="left">
+          <div class="eyebrow">
+            <img src="typesafe-ai.svg" alt="TypeSafe AI" />
+            <span class="rule"></span>
+            <span class="runs">Jev model</span>
+          </div>
+          <h1>Jev (Prompt Coach)</h1>
+          <p class="tag">Let Jev from TypeSafe AI be your prompt coach.</p>
+          <div class="chips">
+            <span class="chip">Claude Code plugin</span>
+            <span class="chip">No added latency</span>
+            <span class="chip">Seven habit checks</span>
+          </div>
+        </div>
+        <!-- The card is the real `always` mode notice, wording and score bar
+             included. It is the plugin's own output, never a user prompt. -->
+        <div class="card">
+          <div class="bar">
+            <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+            <span class="title">claude code</span>
+          </div>
+          <div class="body">
+            <div class="sys">UserPromptSubmit says:</div>
+            <div class="score">Jev (Prompt Coach) - <span class="num">29/100</span></div>
+            <div class="miss">Missing: which file or</div>
+            <div class="miss">function, the verification steps.</div>
+            <div class="meter"><i></i></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>

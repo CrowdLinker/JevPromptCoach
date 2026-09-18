@@ -1,0 +1,87 @@
+<!doctype html>
+<!--
+  Source for ../made-by-crowdlinker.png. Edit this file, then re-render:
+
+    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless \
+      --force-device-scale-factor=2 --window-size=460,68 --hide-scrollbars \
+      --default-background-color=00000000 \
+      --screenshot=raw.png "file://$PWD/footer.html"
+    magick raw.png -trim +repage -strip -define png:compression-level=9 \
+      ../made-by-crowdlinker.png
+
+  Kept at full colour with an alpha channel: the rounded corners need it, and
+  quantising a badge this small saves nothing worth the ragged edge. -trim drops
+  the transparent margin so the README can size the badge by its own width.
+-->
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        width: 460px;
+        height: 68px;
+        background: transparent;
+      }
+      body {
+        font-family:
+          system-ui,
+          -apple-system,
+          'Helvetica Neue',
+          Helvetica,
+          Arial,
+          sans-serif;
+        -webkit-font-smoothing: antialiased;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .pill {
+        display: flex;
+        align-items: center;
+        gap: 11px;
+        height: 56px;
+        padding: 0 26px;
+        border-radius: 14px;
+        background: #0b0f17;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+      }
+      .txt {
+        font-size: 15px;
+        font-weight: 450;
+        letter-spacing: 0.01em;
+        color: #8e9bb0;
+        white-space: nowrap;
+      }
+      .heart {
+        display: block;
+        width: 15px;
+        height: 15px;
+        margin: 0 -3px;
+      }
+      .mark {
+        display: block;
+        height: 21px;
+        width: auto;
+        margin-left: 2px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="pill">
+      <span class="txt">Created with</span>
+      <svg class="heart" viewBox="0 0 24 24" fill="#fc544c" xmlns="http://www.w3.org/2000/svg">
+        <path
+          d="M12 21s-7.5-4.6-9.6-9.1C.7 8.3 2.4 4.6 6 3.7c2.2-.6 4.4.3 6 2.2 1.6-1.9 3.8-2.8 6-2.2 3.6.9 5.3 4.6 3.6 8.2C19.5 16.4 12 21 12 21z"
+        />
+      </svg>
+      <span class="txt">by</span>
+      <img class="mark" src="crowdlinker.svg" alt="Crowdlinker" />
+    </div>
+  </body>
+</html>
