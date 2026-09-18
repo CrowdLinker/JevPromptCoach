@@ -1,4 +1,4 @@
-# JevPromptCoach
+# Jev (Prompt Coach)
 
 Scores how well you write prompts to a coding agent, and shows whether your
 habits are improving. Runs on [TypeSafe](https://typesafe.ai)'s Jev model.
@@ -16,7 +16,7 @@ Most prompt-quality tools put a language model between you and your agent. They
 score the prompt before it is sent, which means a round trip on every message and
 timeouts measured in minutes.
 
-JevPromptCoach does not sit there. In its default mode the hook appends one line
+Jev (Prompt Coach) does not sit there. In its default mode the hook appends one line
 to a local file and exits. Scoring happens when you ask for it, in a command.
 
 The second thing it does differently: it will score the prompts you have
