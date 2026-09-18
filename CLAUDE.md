@@ -11,6 +11,8 @@ Read `CONTRIBUTING.md` too — the rules there apply to you.
 that looks expired. `scripts/check-leaks.mjs` runs as a pre-commit hook, in
 `npm test`, and in CI. Do not pass `--no-verify`. If you are about to write a
 key into any file, stop and put it in `~/.claude/jevpromptcoach/.env` instead.
+Files allowed to hold credential-shaped strings are listed in that script; do
+not add one without saying why, and never to silence a scan you did not read.
 
 **Never commit prompt text.** Not eval fixtures, not the local prompt log, not
 an excerpt in a commit message, a doc, or a PR description. Prompts are the

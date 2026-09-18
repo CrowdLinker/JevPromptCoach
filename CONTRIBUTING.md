@@ -22,8 +22,10 @@ The local hook is installed by `npm install`. `--no-verify` skips the hook; it
 does not skip CI.
 
 If the scanner stops you and the string really is a harmless test fixture, add
-a `LEAK-SCAN-ALLOW:` line near the top of the file explaining why. Every use is
-printed on every run, so an allowance stays visible.
+the path to the allow list at the top of `scripts/check-leaks.mjs` with a
+reason. It lives there, and not in a magic comment inside the file, because a
+file that can exempt itself is a file a careless paste can exempt too. Every
+allowance is printed on every run, and adding one is a diff a reviewer sees.
 
 ## Getting set up
 

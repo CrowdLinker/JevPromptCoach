@@ -10,8 +10,11 @@
  * A local hook can be skipped with --no-verify, which is why CI runs it too.
  *
  * A file that legitimately contains credential-shaped strings — the redaction
- * tests need them — declares `LEAK-SCAN-ALLOW: <reason>` in its first 30 lines.
- * Every use is printed, so an allowance cannot be quiet.
+ * tests need them — is named in ALLOWED below. The allowance deliberately lives
+ * here rather than in the file itself: a file that can exempt itself with a
+ * magic comment is a file an attacker, or a careless paste, can exempt too. An
+ * earlier version worked that way and this doc comment alone was enough to
+ * exempt this script from its own scan. Changing the list is a reviewable diff.
  */
 import { execFileSync } from 'node:child_process';
 import { readFileSync, existsSync } from 'node:fs';
@@ -67,6 +70,16 @@ function looksLikeAssignedSecret(line) {
   return quoted || /\d/.test(value);
 }
 
+/**
+ * Files permitted to contain credential-shaped strings, with the reason. Every
+ * entry is printed on every run, so an allowance is never quiet. Nothing here
+ * is a real credential and nothing here has ever been live.
+ */
+const ALLOWED = new Map([
+  ['test/redact.test.mjs', 'synthetic credentials, to prove redaction removes them'],
+  ['test/hook-privacy.test.mjs', 'a synthetic API key, to prove the hook never sends it'],
+]);
+
 const git = (args) => execFileSync('git', args, { encoding: 'utf8' });
 
 function trackedFiles() {
@@ -100,15 +113,12 @@ for (const path of trackedFiles()) {
   if (content.includes('\u0000')) continue;
   scanned += 1;
 
-  const lines = content.split('\n');
-  const header = lines.slice(0, 30).join('\n');
-  const allowMatch = /LEAK-SCAN-ALLOW:\s*(.+)/.exec(header);
-  if (allowMatch) {
-    allowed.push({ path, reason: allowMatch[1].trim() });
+  if (ALLOWED.has(path)) {
+    allowed.push({ path, reason: ALLOWED.get(path) });
     continue;
   }
 
-  lines.forEach((line, i) => {
+  content.split('\n').forEach((line, i) => {
     for (const { name, re } of SECRETS) {
       if (re.test(line)) problems.push({ path, line: i + 1, what: `looks like a ${name}` });
     }
@@ -147,7 +157,8 @@ Nothing has been committed.
 
   - A real credential: remove it, then rotate it. Assume it is burned.
   - Prompt text or a log: it belongs on your machine only. See test/fixtures/README.md.
-  - A deliberate test fixture: add "LEAK-SCAN-ALLOW: <why>" to the file's first 30 lines.
+  - A deliberate test fixture: add the path to ALLOWED in scripts/check-leaks.mjs,
+    with a reason. That is a reviewable change, which is the point.
 
 Do not pass --no-verify. CI runs this same scan and will fail the pull request.
 `);
