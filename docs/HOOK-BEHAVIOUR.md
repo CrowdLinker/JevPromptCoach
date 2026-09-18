@@ -1,8 +1,8 @@
 
 The prefix is Claude Code's and cannot be removed from the hook side. Line
-breaks inside the string come through as separate lines, which the three-line
+breaks inside the string come through as separate lines, which the two-line
 notice in `src/inline.ts` relies on: the score shares the prefixed line and the
-detail sits under it.
+missing habits sit under it.
 # What the UserPromptSubmit hook can and cannot do
 
 Everything here was measured against Claude Code 2.1.277 on macOS by running a

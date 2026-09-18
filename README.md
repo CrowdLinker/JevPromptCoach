@@ -264,7 +264,6 @@ ours:
 ```
 Jev (Prompt Coach) - 29/100
 Missing: which file or function, the verification steps.
-/jevpromptcoach:score shows how to fix each one.
 ```
 
 Guarantees:

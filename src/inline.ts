@@ -26,7 +26,7 @@ function format(result: PromptScore): string | null {
   // Claude Code prefixes the first line with "UserPromptSubmit says:" and keeps
   // line breaks, so the score shares that line and the detail sits under it.
   const head = result.score === null ? 'Jev (Prompt Coach)' : `Jev (Prompt Coach) - ${result.score}/100`;
-  return `${head}\nMissing: ${missing}.\n/jevpromptcoach:score shows how to fix each one.`;
+  return `${head}\nMissing: ${missing}.`;
 }
 
 /**
