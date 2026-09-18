@@ -1,0 +1,44 @@
+/**
+ * The `always` mode one-liner. Split out of hook.ts so that on-demand mode
+ * never loads it, and with it never loads the Jev client.
+ */
+import type { Config } from './config.js';
+import { readScores, appendScores } from './log.js';
+import { interpret, scoreOne } from './score.js';
+import type { PromptScore } from './score.js';
+
+function format(result: PromptScore): string | null {
+  // Only confident failures reach the line. `inlineSafe` has already demoted
+  // anything near a threshold to `undecided`, so what is left is worth saying.
+  const failures = result.checks.filter((c) => c.verdict === 'fail');
+  if (failures.length === 0) return null;
+
+  const worst = failures.sort((a, b) => (a.probability ?? 1) - (b.probability ?? 1)).slice(0, 2);
+  const missing = worst.map((c) => c.label.toLowerCase()).join(', ');
+  const score = result.score === null ? '' : `${result.score}/100 · `;
+  return `JevPromptCoach: ${score}missing ${missing}. /jevpromptcoach:score for the fix.`;
+}
+
+export async function runInline(text: string, hash: string, config: Config): Promise<string | null> {
+  // A prompt whose text has not changed is never scored twice.
+  try {
+    const cached = readScores().get(hash);
+    if (cached) {
+      return format(interpret(hash, cached.probabilities, cached.gates, { inlineSafe: true }));
+    }
+  } catch { /* cache unreadable; score it fresh */ }
+
+  const deadline = new Promise<null>((resolve) => {
+    const timer = setTimeout(() => resolve(null), config.alwaysTimeoutMs);
+    timer.unref?.();
+  });
+
+  const scored = await Promise.race([
+    scoreOne(text, hash, { timeoutMs: config.alwaysTimeoutMs, inlineSafe: true }),
+    deadline,
+  ]);
+  if (!scored) return null;
+
+  try { appendScores([scored.record]); } catch { /* cache write is best effort */ }
+  return format(scored.result);
+}

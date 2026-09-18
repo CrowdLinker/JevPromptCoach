@@ -1,0 +1,16 @@
+{
+  "name": "jevpromptcoach-dev",
+  "owner": {
+    "name": "JevPromptCoach"
+  },
+  "plugins": [
+    {
+      "name": "jevpromptcoach",
+      "source": "./",
+      "description": "JevPromptCoach - prompt quality coaching on TypeSafe Jev"
+    }
+  ],
+  "metadata": {
+    "description": "JevPromptCoach - prompt quality coaching for Claude Code, on TypeSafe Jev"
+  }
+}

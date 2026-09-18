@@ -1,0 +1,50 @@
+/**
+ * What never reaches the model. Scoring a one-word "continue" wastes a call and
+ * pollutes the report's hit rates with prompts that had nothing to get right.
+ */
+
+const MIN_CHARS = 15;
+
+const ACKNOWLEDGEMENTS = new Set([
+  'yes', 'no', 'y', 'n', 'ok', 'okay', 'k', 'sure', 'yep', 'yeah', 'nope',
+  'continue', 'go', 'go ahead', 'proceed', 'next', 'stop', 'wait', 'done',
+  'thanks', 'thank you', 'ty', 'please', 'do it', 'try again', 'retry',
+  'fix it', 'again', 'good', 'nice', 'perfect', 'great', 'cool', 'hmm',
+]);
+
+export type SkipReason =
+  | 'too_short'
+  | 'slash_command'
+  | 'acknowledgement'
+  | 'bypass_prefix'
+  | 'command_wrapper'
+  | 'session_meta';
+
+export function skipReason(text: string, bypassPrefix = '*'): SkipReason | null {
+  const trimmed = text.trim();
+
+  if (bypassPrefix && trimmed.startsWith(bypassPrefix)) return 'bypass_prefix';
+  if (trimmed.startsWith('/')) return 'slash_command';
+
+  // Claude Code writes these into the transcript itself; they are not prompts.
+  if (/^<(command-name|command-message|command-args|local-command-stdout|bash-input|bash-stdout|user-memory-input)/.test(trimmed)) {
+    return 'command_wrapper';
+  }
+  if (trimmed.startsWith('This session is being continued from a previous conversation')) {
+    return 'session_meta';
+  }
+  if (trimmed.startsWith('Caveat: The messages below were generated')) return 'session_meta';
+  // Injected by Claude Code itself, not typed by anyone.
+  if (trimmed.startsWith('<task-notification')) return 'session_meta';
+  if (/^\[(Request interrupted|Tool use was rejected)/.test(trimmed)) return 'session_meta';
+  if (/^<system-reminder/.test(trimmed)) return 'session_meta';
+
+  if (ACKNOWLEDGEMENTS.has(trimmed.toLowerCase().replace(/[.!,]+$/, ''))) return 'acknowledgement';
+  if (trimmed.length < MIN_CHARS) return 'too_short';
+
+  return null;
+}
+
+export function shouldScore(text: string, bypassPrefix = '*'): boolean {
+  return skipReason(text, bypassPrefix) === null;
+}

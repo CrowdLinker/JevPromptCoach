@@ -1,0 +1,34 @@
+{
+  "name": "jevpromptcoach",
+  "version": "0.1.0",
+  "directories": {
+    "test": "test"
+  },
+  "author": "",
+  "license": "MIT",
+  "type": "module",
+  "private": false,
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@typesafe-ai/sdk": "^0.6.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.1",
+    "esbuild": "^0.28.2",
+    "typescript": "^7.0.2"
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "typecheck": "tsc --noEmit",
+    "eval": "npm run build && node dist/eval.js",
+    "prepare": "npm run build",
+    "test": "npm run build && node --test \"test/*.test.mjs\""
+  },
+  "description": "Scores how well you prompt a coding agent, and shows your habits improving over time. Runs on TypeSafe Jev.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/CrowdLinker/JevPromptCoach.git"
+  }
+}

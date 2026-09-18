@@ -1,0 +1,365 @@
+# JevPromptCoach
+
+Scores how well you write prompts to a coding agent, and shows whether your
+habits are improving. Runs on [TypeSafe](https://typesafe.ai)'s Jev model.
+
+It adds nothing to the time between pressing Enter and getting a response.
+
+> **Unofficial community plugin.** Not affiliated with, endorsed by, or
+> supported by TypeSafe or Anthropic. You bring your own TypeSafe API key.
+
+---
+
+## Why this exists
+
+Most prompt-quality tools put a language model between you and your agent. They
+score the prompt before it is sent, which means a round trip on every message and
+timeouts measured in minutes.
+
+JevPromptCoach does not sit there. In its default mode the hook appends one line
+to a local file and exits. Scoring happens when you ask for it, in a command.
+
+The second thing it does differently: it will score the prompts you have
+**already written**. A backfill over a year of local Claude Code history costs
+about six cents, because Jev charges $0.042 per million input tokens and nothing
+for output. You get a report on day one instead of in two weeks.
+
+## Install
+
+```
+claude plugin marketplace add CrowdLinker/JevPromptCoach
+claude plugin install jevpromptcoach@jevpromptcoach
+```
+
+Then give it a key from [console.typesafe.ai](https://console.typesafe.ai/settings/keys):
+
+```
+export TYPESAFE_API_KEY=...
+```
+
+A hook does not run under your shell profile, so `always` mode needs the key
+somewhere the hook can read it. If `TYPESAFE_API_KEY` is not in the environment,
+the plugin reads `~/.claude/jevpromptcoach/.env` (created `0600`). Put it there
+if you use `always` mode.
+
+Requires Node 20+. The plugin bundles its own dependencies; there is no install
+step and nothing is fetched at runtime.
+
+## Commands
+
+Plugin commands are namespaced, and the prefix is not reliably optional — an
+agent launched via Task or `@mention` cannot resolve the short form. Always write
+the full name.
+
+### `/jevpromptcoach:score <text>`
+
+Scores a draft **before** you send it. This is the teaching surface: it prints
+the score, every check as pass/fail/not-applicable, and for each failure the
+cause, the consequence, and the fix — then rewrites *your* text so it would pass.
+
+```
+/jevpromptcoach:score fix the bug in the code, it doesnt work, refactor everything while youre in there
+```
+
+```
+# Prompt score: 0/100
+
+FAIL  Names a specific target  (0.02)
+FAIL  States a success condition  (0.27)
+FAIL  Bounded scope  (0.03)
+...
+
+### Names a specific target
+- Cause: The request points at the work with a pronoun instead of a name.
+- Consequence: The agent has to guess which file you meant, and it searches —
+  or edits the wrong one.
+- Fix: Name the file, function, or symbol you want changed.
+```
+
+With no argument it explains itself and shows an example. It does not error.
+
+### `/jevpromptcoach:report [N]`
+
+Patterns across the last N logged prompts, default 200. Hit rate per check, a
+30-day trend, and **one** habit to work on. Not seven.
+
+See [docs/EXAMPLE-REPORT.md](docs/EXAMPLE-REPORT.md) for a real one, generated
+over 1,040 prompts of actual history.
+
+### `/jevpromptcoach:config`
+
+Mode, privacy level, backfill, and clearing the log.
+
+```
+/jevpromptcoach:config                      show current settings
+/jevpromptcoach:config mode always          score inline as you type
+/jevpromptcoach:config privacy metadata_only
+/jevpromptcoach:config backfill             estimate, then confirm
+/jevpromptcoach:config clear                delete the local log
+```
+
+## The seven checks
+
+Coding-agent habits, not generic prompt engineering. All seven ride in **one**
+Jev request per prompt — Jev reads the prompt once and answers every question
+against it in parallel, so the full set costs about what one question costs.
+
+| Check | What it asks |
+| --- | --- |
+| `named_target` | Names specific files or functions, not "the code" or "it" |
+| `success_condition` | States what should be true when the work is done |
+| `bounded_scope` | One concrete change, not "refactor everything" |
+| `constraints` | States what must not be touched or must stay stable |
+| `repro_included` | Bug reports carry real error text, or expected vs actual |
+| `plan_first` | Asks for a plan before a large or destructive change |
+| `verification` | Names the test or command that proves it worked |
+
+Two are conditional. `repro_included` is only scored on bug reports and
+`plan_first` only on large or destructive requests; both applicability questions
+ride in the same request and are read by code. Everything else is marked `n/a`
+rather than counted as a failure.
+
+Not scored at all: slash commands, one-word replies, anything under 15
+characters, and Claude Code's own injected messages.
+
+## Two modes
+
+Chosen once, stored in `~/.claude/jevpromptcoach/config.json`.
+
+### `on-demand` (default) — zero added latency
+
+The hook appends one line to a local JSONL log and exits 0. No API call, no
+network, no import of the Jev client. Scoring happens later, when you run a
+command.
+
+Measured cost: **27–31 ms** per prompt, of which ~20 ms is Node process startup.
+The log append itself is well under a millisecond. This is off the network path
+entirely — it is not waiting on anything, and it cannot delay a response.
+
+### `always` — one line, non-blocking
+
+The hook also scores the prompt and prints one line while the prompt proceeds:
+
+```
+JevPromptCoach: 29/100 · missing names a specific target, names a verification.
+/jevpromptcoach:score for the fix.
+```
+
+Guarantees:
+
+- **Never exit 2.** On `UserPromptSubmit`, exit 2 blocks the prompt and *erases
+  what you typed*. Every failure path in the hook exits 0.
+- **A hard timeout** (default 4 s, `config timeout <ms>`). Jev does not answer in
+  time, nothing prints. A missed score is fine; a stalled prompt is not.
+- **`*` bypasses.** A prompt starting with `*` is never logged or scored.
+- **Only findings we can stand behind.** Two checks are barred from the inline
+  line entirely on the eval evidence below, and anything near a threshold is
+  dropped rather than shown.
+
+`always` does not use the mechanism the docs suggest. Writing to stderr with a
+non-zero exit displays nothing on Claude Code 2.1.277; a top-level
+`systemMessage` on exit 0 does. The measurements are in
+[docs/HOOK-BEHAVIOUR.md](docs/HOOK-BEHAVIOUR.md), along with three other
+undocumented behaviours worth knowing if you write hooks.
+
+## Privacy
+
+Prompts contain code, paths, and sometimes secrets. One of the prompts in this
+developer's own history contained a live Azure client secret, which is why
+redaction is a module with tests rather than a regex in passing.
+
+**The log is local.** `~/.claude/jevpromptcoach/`, mode `0600`. Nothing leaves
+your machine except during a command you ran.
+
+| Level | What is stored and sent |
+| --- | --- |
+| `redact` (default) | Prompt text with credentials, emails and identifying path segments removed. Filenames survive, because `named_target` is about whether you named one. |
+| `metadata_only` | Derived features only — length, word count, has-a-code-fence, has-a-file-path. Never the text. Scoring needs text, so this turns scoring off. |
+| `raw` | Prompt text as written. Credential-shaped strings are **still** stripped. |
+
+Stripped at every level, including `raw`: `sk-`, `sk-ant-`, `sk-proj-`, `ghp_`
+and friends, `AKIA`/`ASIA`, `AIza`, Slack `xox*`, JWTs, PEM blocks, Azure client
+secrets, `Bearer` tokens, and anything assigned to a name ending in
+`KEY`/`TOKEN`/`SECRET`/`PASSWORD`.
+
+**Exactly what is sent, and when:**
+
+| When | What goes to `api.typesafe.ai` |
+| --- | --- |
+| `/jevpromptcoach:score` | The one prompt you passed, redacted |
+| `/jevpromptcoach:report` | Any logged prompts not yet scored, redacted, batched |
+| `config backfill` | Your history, redacted, batched — **after** a cost estimate and an explicit confirmation |
+| `always` mode | Each prompt as you submit it, redacted |
+| Ever, otherwise | Nothing |
+
+No telemetry. No other network destination. The API key is read from the
+environment or the key file, and never logged, printed, or included in an error
+message — error text is scrubbed of it on the way out.
+
+A prompt is scored once. Results are cached by content hash, so unchanged text is
+never re-sent.
+
+## Backfill
+
+```
+/jevpromptcoach:config backfill
+```
+
+Reads `~/.claude/projects/**`, finds your human-typed prompts, prints an
+estimate, and sends nothing until you confirm.
+
+Real numbers from this repository's own development:
+
+```
+Transcripts scanned:      1623 human-typed prompts found
+Worth scoring:            1039
+Correction-rate pairs:    607
+Total:       ~$0.0531
+```
+
+Actual cost after running it: **$0.0618** for 1,039 prompts and 607 pairs.
+
+Claude Code writes one JSONL file per session and marks genuinely typed prompts
+with `promptSource: "typed"`. Tool results, subagent traffic, compaction
+summaries and slash-command wrappers all arrive as `type: "user"` too, and are
+all excluded. Older records predate that field and are admitted on shape.
+`src/history.ts` is the parser.
+
+## The outcome signal, and why the report does not use it
+
+Hit rates are self-referential — they say a prompt matched the checks, not that
+it worked. The plan was to anchor them to correction rate: for each consecutive
+pair of prompts in a session, did the second one correct the first?
+
+**It was validated against 633 real pairs before the report was built around it,
+and it failed.** Six of seven checks show a *negative* gap — prompts that pass a
+check are followed by a correction slightly more often, not less — and no gap is
+significant. The judge itself works; the pairs were read back and it identifies
+corrections cleanly. Correction rate just does not measure what it was meant to.
+
+The full numbers, the verification that the detector is sound, and what it
+probably means are in [docs/OUTCOME-SIGNAL.md](docs/OUTCOME-SIGNAL.md).
+
+So the report ships **hit rates and trends only**. Per-check correction columns
+are hidden behind a significance test that this data does not clear, and the
+report says so rather than implying a correlation. The code stays in, because the
+gate is data-driven and your history may clear it.
+
+Phase 2, turns-to-completion, is deliberately not built. It faces the same
+confound.
+
+## Eval
+
+40 real prompts from actual history, hand-labelled per check before any model
+output existed. `npm run eval`.
+
+The headline metric is **fail-precision**: of the prompts where the plugin says a
+habit is missing, how many really were. That is the number that matters, because
+a missing-habit finding is the only thing `always` mode ever shows you, and a
+false one interrupts a message for nothing. Precision beats recall here every
+time.
+
+Thresholds were tuned on these fixtures, so the figures at those thresholds are
+optimistic. The number worth quoting is five-fold cross-validated, re-selecting
+thresholds inside each fold and scoring only held-out prompts:
+
+| Check | CV fail-precision | CV fail-recall | n | Inline? |
+| --- | --- | --- | --- | --- |
+| `named_target` | 0.96 | 0.93 | 28 | yes |
+| `success_condition` | 1.00 | 0.86 | 14 | yes |
+| `bounded_scope` | 1.00 | 0.60 | 10 | yes |
+| `constraints` | 0.97 | 0.97 | 30 | yes |
+| `repro_included` | 1.00 | 0.80 | 5 | **no** — 5 cases is too thin |
+| `plan_first` | 0.86 | 0.75 | 8 | **no** — below the 0.90 bar |
+| `verification` | 1.00 | 0.97 | 39 | yes |
+
+Applicability gates: `is_bug_report` 0.93, `is_large_change` 0.85.
+
+The two checks that do not clear the bar still appear in `/jevpromptcoach:score`
+and `/jevpromptcoach:report`, where you asked. They are barred from the inline
+line, where you did not.
+
+**The fixtures are not committed, by design.** They are real prompts from real
+work — client architecture, internal identifiers, file layouts, and now and then
+a credential someone pasted in a hurry. There is no safe way to publish that, so
+what ships is the result: [test/eval-results.txt](test/eval-results.txt) and
+[test/eval-results.json](test/eval-results.json), which are aggregate metrics
+with no prompt text in them.
+
+You can build and label your own set in a few minutes — `node dist/cli.js
+fixtures-init` samples your own history locally, sends nothing, and needs no API
+key. See [test/fixtures/README.md](test/fixtures/README.md), which also covers
+what a pull request touching accuracy should include.
+
+Two honest notes on the fixture set:
+
+- It is **stratified, not random**. A purely random sample of this history had
+  one prompt naming a verification and no measurable positive class for several
+  checks, so a handful of real prompts carrying the sparse signals were swapped
+  in for near-duplicate short ones. Every prompt is real and unedited.
+- Nine labels were **corrected once** after the first run, where the original
+  label contradicted the check's own written criteria — seven
+  `success_condition` labels on prompts that state an action and nothing about
+  what finished looks like, one `bounded_scope`, one `plan_first`. The rule was
+  applied mechanically from the criteria text, not per item to agree with the
+  model. It is recorded here because re-labelling after seeing model output is
+  exactly how an eval quietly becomes circular.
+
+Thresholds sit below 0.5 for several checks. Jev's probabilities on these
+questions run low in absolute terms while ranking prompts well; what matters is
+the separation, not where it falls.
+
+## How it works
+
+```
+UserPromptSubmit ──► hook.ts ──► redact ──► append JSONL ──► exit 0
+                                                              (on-demand: stops here)
+/jevpromptcoach:score  ─┐
+/jevpromptcoach:report ─┼──► one batched request ──► api.typesafe.ai/v1/systemone
+config backfill        ─┘                            model: jev-latest
+```
+
+Every question is a Noul — a yes/no question returning a calibrated probability.
+The seven checks and two gates are nine Nouls in one request. A backfill packs up
+to 60 prompts into a single request, sized against the 64k total and 32k
+state-only budgets.
+
+Noul answers carry no `confidence` field, unlike Choice and Score. Certainty is
+read from the probability's distance from the threshold, which is what the
+inline margin gates on.
+
+The scoring model is `jev-latest` (currently `jev-1.13.0`) and there is no
+fallback to any other provider. If Jev does not answer, nothing is scored and the
+command says so.
+
+The one thing Jev does not do is write. `/jevpromptcoach:score` produces the
+rewrite through your own agent, from Jev's verdicts and your repository — Jev
+answers typed questions and cannot generate text. All *measurement* is Jev's.
+
+Source layout: `src/checks.ts` defines the questions, thresholds and inline
+eligibility. `src/score.ts` batches and interprets. `src/hook.ts` is the critical
+path. `src/redact.ts` is the privacy boundary. `src/report.ts` aggregates and
+runs the significance test. `src/history.ts` parses Claude Code transcripts.
+
+## Development
+
+```
+npm install
+npm run build        # esbuild → dist/, committed so the plugin needs no install
+npm run typecheck
+npm test             # redaction tests; no API key needed, no fixtures needed
+
+node dist/cli.js fixtures-init   # build your own eval set, locally, from your history
+npm run eval                     # calls Jev; ~$0.002 for 40 prompts
+npm run eval -- --cached         # recompute metrics from the last run, no API calls
+```
+
+The eval needs a labelled `test/fixtures/prompts.json`, which is gitignored.
+Without one, `npm test` and the build still work — only `npm run eval` needs it.
+
+`dist/` is committed on purpose. A plugin that has to `npm install` before its
+hook can run is a plugin that adds latency to your first prompt.
+
+## Licence
+
+MIT. See [LICENSE](LICENSE).

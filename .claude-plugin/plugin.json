@@ -1,0 +1,20 @@
+{
+  "name": "jevpromptcoach",
+  "displayName": "JevPromptCoach",
+  "version": "0.1.0",
+  "description": "JevPromptCoach scores how well you prompt a coding agent and shows your habits improving over time. Runs on TypeSafe's Jev model.",
+  "license": "MIT",
+  "keywords": [
+    "prompt-quality",
+    "typesafe",
+    "jev",
+    "coaching",
+    "analytics"
+  ],
+  "repository": "https://github.com/CrowdLinker/JevPromptCoach",
+  "homepage": "https://github.com/CrowdLinker/JevPromptCoach#readme",
+  "author": {
+    "name": "CrowdLinker",
+    "url": "https://github.com/CrowdLinker"
+  }
+}

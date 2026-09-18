@@ -1,0 +1,8 @@
+node_modules/
+.env
+*.tsbuildinfo
+
+# Eval fixtures are real prompts from real work. They stay on the machine that
+# made them. See test/fixtures/README.md.
+test/fixtures/prompts.json
+test/eval-raw.json
