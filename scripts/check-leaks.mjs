@@ -71,14 +71,21 @@ function looksLikeAssignedSecret(line) {
 }
 
 /**
- * Files permitted to contain credential-shaped strings, with the reason. Every
- * entry is printed on every run, so an allowance is never quiet. Nothing here
- * is a real credential and nothing here has ever been live.
+ * Files permitted to contain credential-shaped strings, with the reason.
+ *
+ * It is empty, and the goal is to keep it empty. The redaction tests need
+ * credential shapes to test against, so they assemble them from fragments at
+ * runtime — no file here holds a contiguous string that looks like a key, which
+ * means nothing needs exempting and GitHub's own push protection stays happy
+ * too. Prefer that trick to adding an entry.
+ *
+ * If an entry is ever genuinely needed, it goes here rather than in a magic
+ * comment inside the file: a file that can exempt itself is a file a careless
+ * paste can exempt too. An earlier version worked that way, and this script's
+ * own doc comment was enough to exempt it from its own scan. Every entry is
+ * printed on every run.
  */
-const ALLOWED = new Map([
-  ['test/redact.test.mjs', 'synthetic credentials, to prove redaction removes them'],
-  ['test/hook-privacy.test.mjs', 'a synthetic API key, to prove the hook never sends it'],
-]);
+const ALLOWED = new Map([]);
 
 const git = (args) => execFileSync('git', args, { encoding: 'utf8' });
 

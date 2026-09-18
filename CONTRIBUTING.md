@@ -21,11 +21,19 @@ pre-commit hook, as part of `npm test`, and again in CI on every pull request.
 The local hook is installed by `npm install`. `--no-verify` skips the hook; it
 does not skip CI.
 
-If the scanner stops you and the string really is a harmless test fixture, add
-the path to the allow list at the top of `scripts/check-leaks.mjs` with a
-reason. It lives there, and not in a magic comment inside the file, because a
-file that can exempt itself is a file a careless paste can exempt too. Every
-allowance is printed on every run, and adding one is a diff a reviewer sees.
+If the scanner stops you and the string really is an invented test value,
+**assemble it from fragments at runtime** rather than exempting the file — the
+redaction tests do exactly this, so no file in the repository holds a
+contiguous string shaped like a key. GitHub's own push protection scans pushes
+independently of ours and will block an invented key just as readily as a real
+one, so this is the only approach that works with both.
+
+There is an allow list at the top of `scripts/check-leaks.mjs` and it is empty.
+Keep it that way if you can. If an entry is ever unavoidable it goes there, with
+a reason, and not in a comment inside the file — a file that can exempt itself
+is a file a careless paste can exempt too.
+
+Never resolve a blocked push by clicking GitHub's "allow this secret" link.
 
 ## Getting set up
 
