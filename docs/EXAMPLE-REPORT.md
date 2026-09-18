@@ -13,17 +13,17 @@ Over the last 30 days: +4 points (improving)
 
 ## How often you do each one
 
-Says which file or function  ######..............  31%  62 of 200
-Says what "done" looks like  ###########.........  53%  105 of 200
-Asks for one thing           #################...  86%  171 of 200
-Says what not to touch       #####...............  23%  45 of 200
-Includes the real error      #######.............  33%  7 of 21
-Asks for a plan first        #########...........  45%  13 of 29
-Says how to check it worked  ##..................   8%  15 of 200
+Mentions which file or function  ######..............  31%  62 of 200
+States what "done" looks like    ###########.........  53%  105 of 200
+Keeps to one requirement         #################...  86%  172 of 200
+States what must not change      #####...............  23%  45 of 200
+Gives the actual error           #######.............  33%  7 of 21
+Asks for a plan first            #########...........  45%  13 of 29
+States the verification steps    ##..................   8%  15 of 200
 
 ## Score by day
 
-2026-09-08  ##########..............  40  from 2 prompts
+2026-09-08  ##########..............  40  from 1 prompt
 2026-09-09  ##########..............  42  from 24 prompts
 2026-09-10  ########................  33  from 22 prompts
 2026-09-11  ########................  34  from 33 prompts
@@ -33,7 +33,7 @@ Says how to check it worked  ##..................   8%  15 of 200
 2026-09-15  ##########..............  40  from 2 prompts
 2026-09-16  ############............  52  from 13 prompts
 2026-09-17  ########................  33  from 20 prompts
-2026-09-18  ##########..............  43  from 42 prompts
+2026-09-18  ##########..............  43  from 43 prompts
 
 ## Does it make any difference?
 
@@ -47,7 +47,7 @@ proof of what worked. Nothing here claims one causes the other.
 
 ## Work on this one
 
-Says how to check it worked — you do this 8% of the time.
+States the verification steps — you do this 8% of the time.
 
 That is the one to change. Leave the rest alone until it moves.
 

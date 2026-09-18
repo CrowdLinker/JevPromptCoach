@@ -50,11 +50,16 @@ function bar(value: number, width = 20): string {
   return '#'.repeat(filled) + '.'.repeat(width - filled);
 }
 
-function renderCheckRow(stat: CheckStat, signalValidated: boolean): string {
-  const head = `${stat.label.padEnd(28)} ${bar(stat.hitRate)} ${pct(stat.hitRate).padStart(4)}  ${stat.passed} of ${stat.applicable}`;
+/** Widest label decides the column, so renaming a check cannot break alignment. */
+function labelWidth(stats: CheckStat[]): number {
+  return Math.max(...stats.map((s) => s.label.length)) + 1;
+}
+
+function renderCheckRow(stat: CheckStat, width: number, signalValidated: boolean): string {
+  const head = `${stat.label.padEnd(width)} ${bar(stat.hitRate)} ${pct(stat.hitRate).padStart(4)}  ${stat.passed} of ${stat.applicable}`;
   if (!signalValidated || stat.correctionWhenPass === null || stat.correctionWhenFail === null) return head;
   const flag = stat.significant ? '' : '  [not significant]';
-  return `${head}\n${' '.repeat(28)}corrections: ${pct(stat.correctionWhenPass)} when it passes vs ${pct(stat.correctionWhenFail)} when it fails${flag}`;
+  return `${head}\n${' '.repeat(width)} corrections: ${pct(stat.correctionWhenPass)} when present vs ${pct(stat.correctionWhenFail)} when absent${flag}`;
 }
 
 export function renderReport(report: Report, requested: number): string {
@@ -79,12 +84,13 @@ export function renderReport(report: Report, requested: number): string {
   lines.push('');
 
   lines.push('## How often you do each one', '');
+  const width = labelWidth(report.checks);
   for (const stat of report.checks) {
     if (stat.applicable === 0) {
-      lines.push(`${stat.label.padEnd(28)} (did not apply to any prompt here)`);
+      lines.push(`${stat.label.padEnd(width)} (did not apply to any prompt here)`);
       continue;
     }
-    lines.push(renderCheckRow(stat, report.correction.signalValidated));
+    lines.push(renderCheckRow(stat, width, report.correction.signalValidated));
   }
   lines.push('');
 

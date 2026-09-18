@@ -51,7 +51,7 @@ async function main() {
   }
   if (config.mode !== "always") return;
   if (stored === null) return;
-  const { runInline } = await import("./inline-AA4TUUQP.js");
+  const { runInline } = await import("./inline-62CDC2NZ.js");
   const line = await runInline(stored, hash, config);
   if (line) emitLine(line);
 }

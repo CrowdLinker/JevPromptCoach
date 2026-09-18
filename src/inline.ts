@@ -24,9 +24,9 @@ function format(result: PromptScore): string | null {
     .sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
   // `shortfall` rather than `label`: the label says what the habit is, and this
   // sentence needs what is absent from the prompt.
-  const missing = worst.map((c) => c.def.shortfall).join(', and ');
+  const missing = worst.map((c) => c.def.shortfall).join(', ');
   const score = result.score === null ? '' : `${result.score}/100 · `;
-  return `JevPromptCoach: ${score}this prompt does not say ${missing}. Run /jevpromptcoach:score to see how to fix it.`;
+  return `JevPromptCoach: ${score}missing: ${missing}. Run /jevpromptcoach:score to see how to fix it.`;
 }
 
 /**

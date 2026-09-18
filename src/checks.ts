@@ -102,7 +102,7 @@ export const GATES: GateDef[] = [
 export const CHECKS: CheckDef[] = [
   {
     id: 'named_target',
-    label: 'Says which file or function',
+    label: 'Mentions which file or function',
     shortfall: 'which file or function',
     instructions:
       'The message identifies where to work by naming at least one concrete file, path, function, class, component, endpoint, or symbol.',
@@ -122,7 +122,7 @@ export const CHECKS: CheckDef[] = [
   },
   {
     id: 'success_condition',
-    label: 'Says what "done" looks like',
+    label: 'States what "done" looks like',
     shortfall: 'what "done" looks like',
     instructions:
       'The message states what should be true, or what should happen, once the work is finished.',
@@ -142,8 +142,8 @@ export const CHECKS: CheckDef[] = [
   },
   {
     id: 'bounded_scope',
-    label: 'Asks for one thing',
-    shortfall: 'a clear boundary',
+    label: 'Keeps to one requirement',
+    shortfall: 'a single focused requirement',
     instructions:
       'The message asks for one contained, well-defined piece of work rather than an open-ended or sweeping change.',
     criteria: {
@@ -162,8 +162,8 @@ export const CHECKS: CheckDef[] = [
   },
   {
     id: 'constraints',
-    label: 'Says what not to touch',
-    shortfall: 'what not to touch',
+    label: 'States what must not change',
+    shortfall: 'what must not change',
     instructions:
       'The message states a limit on the work: something that must not be touched, must keep working, or must not change.',
     criteria: {
@@ -181,8 +181,8 @@ export const CHECKS: CheckDef[] = [
   },
   {
     id: 'repro_included',
-    label: 'Includes the real error',
-    shortfall: 'the real error text',
+    label: 'Gives the actual error',
+    shortfall: 'the actual error',
     instructions:
       'The message includes the actual evidence of the failure: real error output, a log line, a stack trace, or a specific statement of what happened versus what was expected.',
     criteria: {
@@ -222,8 +222,8 @@ export const CHECKS: CheckDef[] = [
   },
   {
     id: 'verification',
-    label: 'Says how to check it worked',
-    shortfall: 'how to check it worked',
+    label: 'States the verification steps',
+    shortfall: 'the verification steps',
     instructions:
       'The message names the specific test, command, or check that would prove the work is correct.',
     criteria: {

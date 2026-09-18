@@ -173,12 +173,12 @@ cause, the consequence, and the fix — then rewrites *your* text so it would pa
 ```
 # Prompt score: 0/100
 
-FAIL  Says which file or function  (0.03)
-FAIL  Says what "done" looks like  (0.26)
-FAIL  Asks for one thing  (0.06)
+FAIL  Mentions which file or function  (0.03)
+FAIL  States what "done" looks like  (0.26)
+FAIL  Keeps to one requirement  (0.06)
 ...
 
-### Says which file or function
+### Mentions which file or function
 - What is missing: You wrote "it" or "the code" instead of a name.
 - What goes wrong: The agent has to guess which file you meant. It searches,
   or it edits the wrong one.
@@ -215,17 +215,23 @@ against it in parallel, so the full set costs about what one question costs.
 
 | Check | What it looks for |
 | --- | --- |
-| Says which file or function | A real name, not "the code" or "it" |
-| Says what "done" looks like | What should be true when the work is finished |
-| Asks for one thing | One concrete change, not "refactor everything" |
-| Says what not to touch | What must stay as it is |
-| Includes the real error | The actual error text, or what you expected versus what happened |
+| Mentions which file or function | A real name, not "the code" or "it" |
+| States what "done" looks like | What should be true when the work is finished |
+| Keeps to one requirement | One concrete change, not several bundled into one message |
+| States what must not change | Anything that must stay as it is |
+| Gives the actual error | The real error text, or what you expected versus what happened |
 | Asks for a plan first | Asked to see the approach before a big or risky change |
-| Says how to check it worked | The test or command that would prove it |
+| States the verification steps | The test or command that would prove it |
 
 Their ids in the code and in `test/eval-results.json` are `named_target`,
 `success_condition`, `bounded_scope`, `constraints`, `repro_included`,
 `plan_first` and `verification`.
+
+`States what must not change` is deliberately not the mirror of
+`Mentions which file or function`. Naming the file to work in tells the agent
+where to start; it does nothing to stop the agent rewriting a neighbouring
+module on the way past. The first bounds where the work begins, the second
+bounds how far it can spread, and prompts routinely have one without the other.
 
 Two are conditional. `repro_included` is only scored on bug reports and
 `plan_first` only on large or destructive requests; both applicability questions
@@ -254,8 +260,8 @@ entirely — it is not waiting on anything, and it cannot delay a response.
 The hook also scores the prompt and prints one line while the prompt proceeds:
 
 ```
-JevPromptCoach: 29/100 · this prompt does not say which file or function, and
-how to check it worked. Run /jevpromptcoach:score to see how to fix it.
+JevPromptCoach: 29/100 · missing: which file or function, the verification
+steps. Run /jevpromptcoach:score to see how to fix it.
 ```
 
 Guarantees:
@@ -378,13 +384,13 @@ thresholds inside each fold and scoring only held-out prompts:
 
 | Check | CV fail-precision | CV fail-recall | n | Inline? |
 | --- | --- | --- | --- | --- |
-| Says which file or function | 0.96 | 0.93 | 28 | yes |
-| Says what "done" looks like | 1.00 | 0.86 | 14 | yes |
-| Asks for one thing | 1.00 | 0.60 | 10 | yes |
-| Says what not to touch | 0.97 | 0.97 | 30 | yes |
-| Includes the real error | 1.00 | 0.80 | 5 | **no** — 5 cases is too thin |
+| Mentions which file or function | 0.96 | 0.93 | 28 | yes |
+| States what "done" looks like | 1.00 | 0.86 | 14 | yes |
+| Keeps to one requirement | 1.00 | 0.60 | 10 | yes |
+| States what must not change | 0.97 | 0.97 | 30 | yes |
+| Gives the actual error | 1.00 | 0.80 | 5 | **no** — 5 cases is too thin |
 | Asks for a plan first | 0.86 | 0.75 | 8 | **no** — below the 0.90 bar |
-| Says how to check it worked | 1.00 | 0.97 | 39 | yes |
+| States the verification steps | 1.00 | 0.97 | 39 | yes |
 
 Applicability gates: `is_bug_report` 0.93, `is_large_change` 0.85.
 

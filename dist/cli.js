@@ -25,7 +25,7 @@ import {
   interpret,
   scoreMany,
   scoreOne
-} from "./chunk-BDQKKYZS.js";
+} from "./chunk-VF2RHVF5.js";
 import {
   DATA_DIR,
   ENV_PATH,
@@ -293,12 +293,15 @@ function bar(value, width = 20) {
   const filled = Math.round(value * width);
   return "#".repeat(filled) + ".".repeat(width - filled);
 }
-function renderCheckRow(stat, signalValidated) {
-  const head = `${stat.label.padEnd(28)} ${bar(stat.hitRate)} ${pct(stat.hitRate).padStart(4)}  ${stat.passed} of ${stat.applicable}`;
+function labelWidth(stats) {
+  return Math.max(...stats.map((s) => s.label.length)) + 1;
+}
+function renderCheckRow(stat, width, signalValidated) {
+  const head = `${stat.label.padEnd(width)} ${bar(stat.hitRate)} ${pct(stat.hitRate).padStart(4)}  ${stat.passed} of ${stat.applicable}`;
   if (!signalValidated || stat.correctionWhenPass === null || stat.correctionWhenFail === null) return head;
   const flag = stat.significant ? "" : "  [not significant]";
   return `${head}
-${" ".repeat(28)}corrections: ${pct(stat.correctionWhenPass)} when it passes vs ${pct(stat.correctionWhenFail)} when it fails${flag}`;
+${" ".repeat(width)} corrections: ${pct(stat.correctionWhenPass)} when present vs ${pct(stat.correctionWhenFail)} when absent${flag}`;
 }
 function renderReport(report, requested) {
   const lines = [];
@@ -319,12 +322,13 @@ function renderReport(report, requested) {
   }
   lines.push("");
   lines.push("## How often you do each one", "");
+  const width = labelWidth(report.checks);
   for (const stat of report.checks) {
     if (stat.applicable === 0) {
-      lines.push(`${stat.label.padEnd(28)} (did not apply to any prompt here)`);
+      lines.push(`${stat.label.padEnd(width)} (did not apply to any prompt here)`);
       continue;
     }
-    lines.push(renderCheckRow(stat, report.correction.signalValidated));
+    lines.push(renderCheckRow(stat, width, report.correction.signalValidated));
   }
   lines.push("");
   if (report.trend.length >= 2) {
