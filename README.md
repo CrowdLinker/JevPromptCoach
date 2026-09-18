@@ -533,7 +533,12 @@ claim is that it stays out of the way.
 
 ## Licence
 
-MIT. See [LICENSE](LICENSE).
+MIT, for the code. See [LICENSE](LICENSE).
+
+The names and logos are not covered by it — fork the code, but rename the fork
+and take the Crowdlinker mark off it. TypeSafe, Jev, Claude and Claude Code
+belong to their own owners. [TRADEMARKS.md](TRADEMARKS.md) sets out who claims
+what.
 
 ---
 

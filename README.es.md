@@ -282,7 +282,12 @@ de pre-commit, dentro de `npm test`, y otra vez en CI en cada pull request.
 
 ## Licencia
 
-MIT. Ver [LICENSE](LICENSE).
+MIT, para el código. Ver [LICENSE](LICENSE).
+
+Los nombres y los logos no están incluidos — haz un fork del código, pero
+renómbralo y quítale la marca Crowdlinker. TypeSafe, Jev, Claude y Claude Code
+pertenecen a sus respectivos dueños. [TRADEMARKS.md](TRADEMARKS.md) detalla
+quién reclama qué (en inglés).
 
 ---
 
