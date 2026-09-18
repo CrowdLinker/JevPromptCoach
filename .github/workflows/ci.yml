@@ -39,6 +39,8 @@ jobs:
             exit 1
           fi
 
-      # Redaction and the hook's wire behaviour. No API key, no network.
+      # Redaction and the hook's wire behaviour. No API key, no external network.
+      # Quoting the glob would hand Node the literal pattern: Node 20 does not
+      # expand it, so the shell must.
       - name: Tests
-        run: node --test "test/*.test.mjs"
+        run: npm run test:unit
