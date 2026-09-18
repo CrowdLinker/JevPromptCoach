@@ -24,26 +24,100 @@ The second thing it does differently: it will score the prompts you have
 about six cents, because Jev charges $0.042 per million input tokens and nothing
 for output. You get a report on day one instead of in two weeks.
 
+## Requirements
+
+- **Node 20 or newer** — `node --version`
+- **Claude Code 2.1.x or newer.** Plugin-declared `UserPromptSubmit` hooks did
+  not execute on some earlier versions, and the plugin depends on them.
+- **A TypeSafe API key**, from [console.typesafe.ai](https://console.typesafe.ai/settings/keys).
+
+The plugin bundles its own dependencies. There is no install step, nothing is
+fetched at runtime, and the only host it ever contacts is `api.typesafe.ai`.
+
 ## Install
+
+**1. Add the marketplace and install the plugin.**
 
 ```
 claude plugin marketplace add CrowdLinker/JevPromptCoach
 claude plugin install jevpromptcoach@jevpromptcoach
 ```
 
-Then give it a key from [console.typesafe.ai](https://console.typesafe.ai/settings/keys):
+Confirm it loaded — status should be `enabled`:
 
 ```
-export TYPESAFE_API_KEY=...
+claude plugin list
 ```
 
-A hook does not run under your shell profile, so `always` mode needs the key
-somewhere the hook can read it. If `TYPESAFE_API_KEY` is not in the environment,
-the plugin reads `~/.claude/jevpromptcoach/.env` (created `0600`). Put it there
-if you use `always` mode.
+**2. Give it your API key.**
 
-Requires Node 20+. The plugin bundles its own dependencies; there is no install
-step and nothing is fetched at runtime.
+Either export it in the shell you start Claude Code from:
+
+```
+export TYPESAFE_API_KEY=your-key-here
+```
+
+…or write it to the key file, which is what `always` mode needs:
+
+```
+mkdir -p ~/.claude/jevpromptcoach
+printf 'TYPESAFE_API_KEY=%s\n' 'your-key-here' > ~/.claude/jevpromptcoach/.env
+chmod 600 ~/.claude/jevpromptcoach/.env
+```
+
+A hook does not run under your shell profile, so a key exported only in
+`.zshrc` may not reach it. The key file is read when the environment variable
+is absent. It is never written by the plugin, never logged, and never included
+in an error message.
+
+**3. Check it is working.**
+
+```
+/jevpromptcoach:config
+```
+
+That prints your mode, privacy level, whether the key was found, and how many
+prompts have been logged so far. Submit a prompt or two and run it again — if
+the logged count is not rising, the hook is not firing, and
+[docs/HOOK-BEHAVIOUR.md](docs/HOOK-BEHAVIOUR.md) covers why that happens.
+
+## Setup
+
+**Pick a mode.** The default is `on-demand`, which never adds latency. Switch
+only if you want a score on every message:
+
+```
+/jevpromptcoach:config mode always
+```
+
+**Pick a privacy level.** The default is `redact`. If prompts in your work
+should never leave the machine at all:
+
+```
+/jevpromptcoach:config privacy metadata_only
+```
+
+**Backfill your history.** This is the part worth doing on day one — it scores
+the prompts you have already written, so the first report covers months instead
+of nothing:
+
+```
+/jevpromptcoach:config backfill
+```
+
+It prints how many prompts it found and what they will cost, and sends nothing
+until you confirm. Over 1,039 prompts it cost $0.06.
+
+Then:
+
+```
+/jevpromptcoach:report
+```
+
+**Uninstalling.** `claude plugin uninstall jevpromptcoach@jevpromptcoach`
+removes the plugin but leaves your data. To delete that too, remove
+`~/.claude/jevpromptcoach/` — it holds the log, the score cache, your config and
+the key file, and nothing else.
 
 ## Commands
 
@@ -341,14 +415,19 @@ eligibility. `src/score.ts` batches and interprets. `src/hook.ts` is the critica
 path. `src/redact.ts` is the privacy boundary. `src/report.ts` aggregates and
 runs the significance test. `src/history.ts` parses Claude Code transcripts.
 
-## Development
+## Contributing
+
+[CONTRIBUTING.md](CONTRIBUTING.md) has the detail. Two rules are absolute: **no
+credential and no prompt text ever reaches a commit** — yours or anyone's.
+
+That is enforced rather than asked for. `scripts/check-leaks.mjs` runs as a
+pre-commit hook (installed by `npm install`), as part of `npm test`, and again
+in CI on every pull request. `--no-verify` skips the hook, not CI.
 
 ```
-npm install
-npm run build        # esbuild → dist/, committed so the plugin needs no install
+npm install          # also points git at the repo's hooks
+npm test             # build, tests, leak scan — no API key, no network
 npm run typecheck
-npm test             # redaction tests; no API key needed, no fixtures needed
-
 node dist/cli.js fixtures-init   # build your own eval set, locally, from your history
 npm run eval                     # calls Jev; ~$0.002 for 40 prompts
 npm run eval -- --cached         # recompute metrics from the last run, no API calls
@@ -356,6 +435,12 @@ npm run eval -- --cached         # recompute metrics from the last run, no API c
 
 The eval needs a labelled `test/fixtures/prompts.json`, which is gitignored.
 Without one, `npm test` and the build still work — only `npm run eval` needs it.
+
+The tests cover the two things that must not regress: that redaction removes
+every credential shape it claims to, and that the hook sends redacted text and
+exits 0 on every path. The hook test asserts on the actual request body, against
+a local capture server, because the bug it exists to catch was a caller passing
+the raw prompt to a function that does no redaction of its own.
 
 `dist/` is committed on purpose. A plugin that has to `npm install` before its
 hook can run is a plugin that adds latency to your first prompt.

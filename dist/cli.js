@@ -541,8 +541,13 @@ async function cmdReport(argv) {
   const window = entries.slice(-requested);
   const scores = readScores();
   const unscored = window.filter((e) => e.text !== null && !scores.has(e.hash));
-  if (unscored.length > 0) {
-    if (!requireKey()) return;
+  if (unscored.length > 0 && !apiKey()) {
+    process.stderr.write(
+      `TYPESAFE_API_KEY is not set, so ${unscored.length} newer prompts could not be scored.
+Reporting on what is already scored. Nothing was sent.
+`
+    );
+  } else if (unscored.length > 0) {
     const cost = estimateScoringCost(unscored.map((e) => e.text));
     process.stderr.write(`Scoring ${unscored.length} new prompts (~$${cost.usd.toFixed(4)})\u2026
 `);

@@ -22,9 +22,10 @@
   "scripts": {
     "build": "node scripts/build.mjs",
     "typecheck": "tsc --noEmit",
+    "check-leaks": "node scripts/check-leaks.mjs",
+    "test": "npm run build && node --test \"test/*.test.mjs\" && npm run check-leaks",
     "eval": "npm run build && node dist/eval.js",
-    "prepare": "npm run build",
-    "test": "npm run build && node --test \"test/*.test.mjs\""
+    "prepare": "git config core.hooksPath .githooks 2>/dev/null || true"
   },
   "description": "Scores how well you prompt a coding agent, and shows your habits improving over time. Runs on TypeSafe Jev.",
   "repository": {

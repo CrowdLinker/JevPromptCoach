@@ -19,7 +19,14 @@ function format(result: PromptScore): string | null {
   return `JevPromptCoach: ${score}missing ${missing}. /jevpromptcoach:score for the fix.`;
 }
 
-export async function runInline(text: string, hash: string, config: Config): Promise<string | null> {
+/**
+ * @param redactedText The prompt *after* the configured privacy level has been
+ *   applied. The caller must never pass the raw prompt: this is the last hop
+ *   before the API and it does no redaction of its own.
+ * @param hash Content hash of the ORIGINAL text, so the cache key is stable
+ *   across privacy-level changes.
+ */
+export async function runInline(redactedText: string, hash: string, config: Config): Promise<string | null> {
   // A prompt whose text has not changed is never scored twice.
   try {
     const cached = readScores().get(hash);
@@ -34,7 +41,7 @@ export async function runInline(text: string, hash: string, config: Config): Pro
   });
 
   const scored = await Promise.race([
-    scoreOne(text, hash, { timeoutMs: config.alwaysTimeoutMs, inlineSafe: true }),
+    scoreOne(redactedText, hash, { timeoutMs: config.alwaysTimeoutMs, inlineSafe: true }),
     deadline,
   ]);
   if (!scored) return null;

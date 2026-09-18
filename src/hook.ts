@@ -71,10 +71,16 @@ async function main(): Promise<void> {
 
   if (config.mode !== 'always') return;
 
-  // From here on we are in `always` mode and may call the API. The budget is
-  // hard: whatever has not answered by then is abandoned and nothing prints.
+  // `metadata_only` means no prompt text may leave the machine, and scoring
+  // needs text. There is nothing to send, so nothing is sent.
+  if (stored === null) return;
+
+  // From here on we are in `always` mode and may call the API. What goes out is
+  // `stored` — the text after the configured privacy level has been applied —
+  // never the raw prompt. The budget is hard: whatever has not answered by then
+  // is abandoned and nothing prints.
   const { runInline } = await import('./inline.js');
-  const line = await runInline(text, hash, config);
+  const line = await runInline(stored, hash, config);
   if (line) emitLine(line);
 }
 

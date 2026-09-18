@@ -1,7 +1,8 @@
 {
-  "name": "jevpromptcoach-dev",
+  "name": "jevpromptcoach",
   "owner": {
-    "name": "JevPromptCoach"
+    "name": "CrowdLinker",
+    "url": "https://github.com/CrowdLinker"
   },
   "plugins": [
     {

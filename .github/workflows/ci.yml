@@ -1,0 +1,44 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - run: npm ci
+
+      # Runs before anything else. A pull request that carries a credential or
+      # someone's prompt text fails here, whether or not the author had the
+      # local pre-commit hook installed — `--no-verify` skips the hook, not this.
+      - name: Leak scan
+        run: npm run check-leaks
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build
+        run: npm run build
+
+      # dist/ is committed so the plugin needs no install step. If a build from
+      # this source produces something different, the committed bundle is stale.
+      - name: dist/ is in sync with src/
+        run: |
+          if ! git diff --quiet -- dist; then
+            echo "dist/ does not match a fresh build of src/. Run 'npm run build' and commit the result."
+            git diff --stat -- dist
+            exit 1
+          fi
+
+      # Redaction and the hook's wire behaviour. No API key, no network.
+      - name: Tests
+        run: node --test "test/*.test.mjs"

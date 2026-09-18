@@ -56,21 +56,7 @@ before merging.
 
 ## Format
 
-```json
-[
-  {
-    "id": "p00",
-    "text": "<the prompt, verbatim and unedited>",
-    "labels": {
-      "named_target": true,
-      "success_condition": false,
-      "bounded_scope": true,
-      "constraints": false,
-      "repro_included": null,
-      "plan_first": null,
-      "verification": false
-    },
-    "gates": { "is_bug_report": false, "is_large_change": false }
-  }
-]
-```
+`fixtures-init` writes the file in the shape the eval expects, so the quickest
+way to see the format is to run it and open the result. Each entry carries an
+id, the prompt verbatim, a label per check, and the two applicability gates.
+`src/eval.ts` reads it and `src/checks.ts` names every field.

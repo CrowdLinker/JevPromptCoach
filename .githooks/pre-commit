@@ -1,0 +1,4 @@
+#!/bin/sh
+# Installed by `npm install` (see the prepare script) via core.hooksPath.
+# Blocks a commit that carries a credential or somebody's prompt text.
+exec node "$(git rev-parse --show-toplevel)/scripts/check-leaks.mjs" --staged

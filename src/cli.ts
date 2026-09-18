@@ -115,8 +115,15 @@ async function cmdReport(argv: string[]): Promise<void> {
   const scores = readScores();
 
   const unscored = window.filter((e) => e.text !== null && !scores.has(e.hash));
-  if (unscored.length > 0) {
-    if (!requireKey()) return;
+  // Without a key we cannot score the new ones, but we can still report on
+  // everything already scored. Refusing to print anything would make the report
+  // permanently unusable, since the hook keeps logging new prompts.
+  if (unscored.length > 0 && !apiKey()) {
+    process.stderr.write(
+      `TYPESAFE_API_KEY is not set, so ${unscored.length} newer prompts could not be scored.\n` +
+      'Reporting on what is already scored. Nothing was sent.\n',
+    );
+  } else if (unscored.length > 0) {
     const cost = estimateScoringCost(unscored.map((e) => e.text!));
     process.stderr.write(`Scoring ${unscored.length} new prompts (~$${cost.usd.toFixed(4)})…\n`);
     const records = await scoreMany(
