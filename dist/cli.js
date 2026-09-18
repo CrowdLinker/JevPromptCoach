@@ -13,7 +13,7 @@ import {
   compactScores,
   readLog,
   readScores
-} from "./chunk-6SUSZTSJ.js";
+} from "./chunk-H3A3BY5V.js";
 import {
   CHECKS,
   CORRECTION_QUESTION,
@@ -25,14 +25,16 @@ import {
   interpret,
   scoreMany,
   scoreOne
-} from "./chunk-WU6TQMXS.js";
+} from "./chunk-3ANEOYRE.js";
 import {
   DATA_DIR,
+  ENV_PATH,
   LOG_PATH,
   apiKey,
+  apiKeySource,
   loadConfig,
   saveConfig
-} from "./chunk-C2EB2JKW.js";
+} from "./chunk-DQOMOEZG.js";
 
 // src/correction.ts
 var REQUEST_TOKEN_BUDGET = 4e4;
@@ -688,7 +690,8 @@ async function cmdConfig(argv) {
     out(`Bypass prefix:   ${config.bypassPrefix}  (a prompt starting with this is never logged or scored)`);
     out(`Always timeout:  ${config.alwaysTimeoutMs} ms`);
     out(`Last backfill:   ${config.lastBackfill ?? "never"}`);
-    out(`API key:         ${apiKey() ? "set (TYPESAFE_API_KEY)" : "NOT SET \u2014 no scoring is possible"}`);
+    const source = apiKeySource();
+    out(`API key:         ${source === "environment" ? "set (TYPESAFE_API_KEY in the environment)" : source === "key file" ? `set (${ENV_PATH})` : "NOT SET \u2014 no scoring is possible"}`);
     out("");
     out(`Log:             ${LOG_PATH}`);
     out(`Prompts logged:  ${entries.length}`);

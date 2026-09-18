@@ -2,7 +2,7 @@
  * Everything the slash commands run. All Jev calls live here — the hook never
  * makes one in on-demand mode.
  */
-import { loadConfig, saveConfig, apiKey, DATA_DIR, LOG_PATH, type Mode, type Privacy } from './config.js';
+import { loadConfig, saveConfig, apiKey, apiKeySource, ENV_PATH, DATA_DIR, LOG_PATH, type Mode, type Privacy } from './config.js';
 import { applyPrivacy } from './redact.js';
 import { skipReason } from './skip.js';
 import { promptHash } from './hash.js';
@@ -274,7 +274,15 @@ async function cmdConfig(argv: string[]): Promise<void> {
     out(`Bypass prefix:   ${config.bypassPrefix}  (a prompt starting with this is never logged or scored)`);
     out(`Always timeout:  ${config.alwaysTimeoutMs} ms`);
     out(`Last backfill:   ${config.lastBackfill ?? 'never'}`);
-    out(`API key:         ${apiKey() ? 'set (TYPESAFE_API_KEY)' : 'NOT SET — no scoring is possible'}`);
+    // Name the source that actually answered. Saying TYPESAFE_API_KEY when the
+    // key came from the file sends anyone debugging a missing key to the wrong
+    // place, and the file is the method the docs now teach.
+    const source = apiKeySource();
+    out(`API key:         ${
+      source === 'environment' ? 'set (TYPESAFE_API_KEY in the environment)'
+      : source === 'key file' ? `set (${ENV_PATH})`
+      : 'NOT SET — no scoring is possible'
+    }`);
     out('');
     out(`Log:             ${LOG_PATH}`);
     out(`Prompts logged:  ${entries.length}`);

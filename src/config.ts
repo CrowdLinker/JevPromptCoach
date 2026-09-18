@@ -76,6 +76,15 @@ export function apiKey(): string | null {
   }
 }
 
+/**
+ * Where the key was found, for reporting. Never returns the key itself.
+ * `null` means no key is available and nothing can be scored.
+ */
+export function apiKeySource(): 'environment' | 'key file' | null {
+  if (process.env.TYPESAFE_API_KEY?.trim()) return 'environment';
+  return apiKey() ? 'key file' : null;
+}
+
 /** Store the key at 0600 for the hook process to read. Never logs it. */
 export function saveApiKey(key: string): void {
   ensureDataDir();

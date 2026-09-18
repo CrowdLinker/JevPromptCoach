@@ -8,10 +8,10 @@ import {
 } from "./chunk-CZRZPMXP.js";
 import {
   appendLog
-} from "./chunk-6SUSZTSJ.js";
+} from "./chunk-H3A3BY5V.js";
 import {
   loadConfig
-} from "./chunk-C2EB2JKW.js";
+} from "./chunk-DQOMOEZG.js";
 
 // src/hook.ts
 import { readFileSync } from "node:fs";
@@ -51,7 +51,7 @@ async function main() {
   }
   if (config.mode !== "always") return;
   if (stored === null) return;
-  const { runInline } = await import("./inline-QWAS4WUJ.js");
+  const { runInline } = await import("./inline-MEWOG7JN.js");
   const line = await runInline(stored, hash, config);
   if (line) emitLine(line);
 }
