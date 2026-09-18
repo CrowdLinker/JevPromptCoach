@@ -113,6 +113,13 @@ first and be willing to publish a negative result — see
 bundle the hook points at nothing. Run `npm run build` and commit the result;
 CI fails if the committed bundle does not match a fresh build of `src/`.
 
+**Bump the version when `dist/` changes.** `claude plugin update` compares the
+`version` in `.claude-plugin/plugin.json`. Ship a new bundle under the old
+version and every existing install reports "already at the latest version" and
+keeps running the old code — there is no error and nothing to notice. CI fails a
+push that changes `dist/` without moving the version. Keep `package.json` in
+step with it.
+
 **Do not add a lockfile.** `npm install` will write one; it is gitignored, and
 CI fails if one is ever tracked. Claude Code runs `npm ci` when a plugin has
 both a `package.json` and a lockfile, which puts 43 MB of build tooling into

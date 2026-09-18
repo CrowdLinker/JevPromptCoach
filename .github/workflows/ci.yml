@@ -21,6 +21,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 2  # the version guard below compares against the parent commit
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
@@ -71,3 +73,29 @@ jobs:
       # Redaction and the hook's wire behaviour. No API key, no external network.
       - name: Tests
         run: npm run test:unit
+
+  # `claude plugin update` compares the version string in plugin.json. Ship a
+  # changed bundle under an unchanged version and every existing install reports
+  # "already at the latest version" and silently keeps running the old code.
+  version-bumped:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 2
+
+      - name: A changed dist/ requires a new plugin version
+        run: |
+          if git rev-parse HEAD~1 >/dev/null 2>&1 && ! git diff --quiet HEAD~1 HEAD -- dist; then
+            before=$(git show HEAD~1:.claude-plugin/plugin.json | node -p "JSON.parse(require('fs').readFileSync(0,'utf8')).version")
+            after=$(node -p "require('./.claude-plugin/plugin.json').version")
+            if [ "$before" = "$after" ]; then
+              echo "dist/ changed but .claude-plugin/plugin.json is still $after."
+              echo "Existing installs compare that string and would never fetch this build."
+              exit 1
+            fi
+            echo "dist/ changed and the version moved $before -> $after."
+          else
+            echo "dist/ unchanged; no version bump needed."
+          fi

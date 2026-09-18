@@ -44,6 +44,9 @@ easy to break with a change that looks reasonable.
 - **`dist/` is committed and must match `src/`.** Claude Code installs with
   `--ignore-scripts`, so nothing is ever built at install time. Run
   `npm run build` after any source change; CI fails if it drifts.
+- **Bump `.claude-plugin/plugin.json` whenever `dist/` changes.** That string
+  is what `claude plugin update` compares; leave it alone and users silently
+  keep the old build. Keep package.json in step. CI enforces it.
 - **Never commit a lockfile.** `npm install` writes one and it is gitignored.
   With a lockfile present Claude Code runs `npm ci` into every user's plugin
   cache: 43 MB of build tooling, none of it used. Pin devDependencies exactly
