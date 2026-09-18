@@ -82,6 +82,13 @@ criteria, fix it, apply the same rule to every fixture, and record it.
 failed; the report hides the columns rather than implying a correlation. Keep
 that standard.
 
+## Testing the plugin end to end
+
+Load the working copy with `claude --plugin-dir <repo path>`, after
+`npm run build` — the hook runs from `dist/`, not `src/`. Do not register the
+checkout with `claude plugin marketplace add ./`: it takes the name
+`jevpromptcoach`, and the real marketplace then cannot be added under that name.
+
 ## Checks before you finish
 
 Run `npm test` — it builds, runs the tests and runs the leak scan, and needs no

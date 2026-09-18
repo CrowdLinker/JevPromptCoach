@@ -56,24 +56,39 @@ claude plugin list
 
 **2. Give it your API key.**
 
-Either export it in the shell you start Claude Code from:
-
-```
-export TYPESAFE_API_KEY=your-key-here
-```
-
-…or write it to the key file, which is what `always` mode needs:
+Create the key file first, lock it down, and only then put the key in it — so
+the key never exists in a world-readable file, and never appears on a command
+line where your shell would record it in history:
 
 ```
 mkdir -p ~/.claude/jevpromptcoach
-printf 'TYPESAFE_API_KEY=%s\n' 'your-key-here' > ~/.claude/jevpromptcoach/.env
+touch ~/.claude/jevpromptcoach/.env
 chmod 600 ~/.claude/jevpromptcoach/.env
 ```
 
-A hook does not run under your shell profile, so a key exported only in
-`.zshrc` may not reach it. The key file is read when the environment variable
-is absent. It is never written by the plugin, never logged, and never included
-in an error message.
+Then open `~/.claude/jevpromptcoach/.env` in your editor and add one line:
+
+```
+TYPESAFE_API_KEY=your-key-here
+```
+
+The key file is where the plugin looks. A hook does not run under your shell
+profile, so a key exported only in `.zshrc` may never reach it, and `always`
+mode needs it here. The plugin never writes this file, never logs the key, and
+never lets it into an error message.
+
+If you would rather not use an editor, this reads the key without echoing it and
+without putting it in your history:
+
+```
+mkdir -p ~/.claude/jevpromptcoach && touch ~/.claude/jevpromptcoach/.env && chmod 600 ~/.claude/jevpromptcoach/.env
+read -rs KEY && printf 'TYPESAFE_API_KEY=%s\n' "$KEY" > ~/.claude/jevpromptcoach/.env && unset KEY
+```
+
+Paste the key at the blank prompt and press Enter. That works in both bash and
+zsh. `TYPESAFE_API_KEY` in the environment still takes precedence if you have a
+reason to set it — that is how CI and the eval supply it — but the file is the
+one to use day to day.
 
 **3. Check it is working.**
 
@@ -118,6 +133,21 @@ Then:
 ```
 /jevpromptcoach:report
 ```
+
+**If the marketplace refuses to add.** A message about the source differing
+from *"the one declared for it in settings"* means the name `jevpromptcoach` is
+already registered against a different source — most often a local directory,
+from developing the plugin. Marketplace names are unique, so the GitHub source
+cannot be added under a name that is taken. Remove the old registration and
+retry:
+
+```
+claude plugin marketplace remove jevpromptcoach
+claude plugin marketplace add CrowdLinker/JevPromptCoach
+```
+
+Removing a marketplace uninstalls the plugins that came from it. Your log,
+scores and config live in `~/.claude/jevpromptcoach/` and are untouched.
 
 **Uninstalling.** `claude plugin uninstall jevpromptcoach@jevpromptcoach`
 removes the plugin but leaves your data. To delete that too, remove

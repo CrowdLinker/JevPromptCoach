@@ -63,6 +63,23 @@ is not the one they were produced on. That is expected. Put your before/after in
 the pull request and the maintainer will re-run the committed set locally to
 confirm the change is a real improvement.
 
+## Testing your changes in Claude Code
+
+Load the working copy directly rather than registering it as a marketplace:
+
+```
+claude --plugin-dir /path/to/JevPromptCoach
+```
+
+Do not add your checkout with `claude plugin marketplace add ./`. That
+registers the name `jevpromptcoach` against a local directory, and because
+marketplace names are unique, adding the real one afterwards fails with a
+message about the source differing from the one declared in settings. If you
+have already done it, `claude plugin marketplace remove jevpromptcoach` clears
+it.
+
+Run `npm run build` before testing: the hook runs from `dist/`, not `src/`.
+
 ## Things worth knowing before you change them
 
 **The hook is the critical path.** In on-demand mode it must do nothing but

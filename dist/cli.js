@@ -453,12 +453,20 @@ var out = (s) => {
 };
 function requireKey() {
   if (apiKey()) return true;
-  out("TYPESAFE_API_KEY is not set.");
+  out("No TypeSafe API key found.");
   out("");
   out("JevPromptCoach runs on TypeSafe's Jev model and makes no calls without it.");
-  out("Get a key at https://console.typesafe.ai/settings/keys and export it:");
+  out("Get a key at https://console.typesafe.ai/settings/keys, then put it in the");
+  out("key file \u2014 created locked down first, so the key is never world-readable");
+  out("and never sits in your shell history:");
   out("");
-  out("  export TYPESAFE_API_KEY=...");
+  out("  mkdir -p ~/.claude/jevpromptcoach");
+  out("  touch ~/.claude/jevpromptcoach/.env");
+  out("  chmod 600 ~/.claude/jevpromptcoach/.env");
+  out("");
+  out("Then add one line to ~/.claude/jevpromptcoach/.env:");
+  out("");
+  out("  TYPESAFE_API_KEY=your-key-here");
   out("");
   out("Your logged prompts are untouched and nothing was sent.");
   return false;
