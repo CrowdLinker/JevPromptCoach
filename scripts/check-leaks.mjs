@@ -65,7 +65,10 @@ function looksLikeAssignedSecret(line) {
   if (/[()[\]{}$<>]/.test(value)) return false; // it is an expression, not a literal
   if (value.includes('..') || value.endsWith('.')) return false;
   // SCREAMING_SNAKE_CASE is an env var name or a constant, not a secret:
-  // `apiKey: "TYPESAFE_API_KEY"` names the variable that holds the key.
+  // An apiKey field whose value is TYPESAFE_API_KEY names the variable that
+  // holds the key, not the key itself. Written out rather than shown as a
+  // literal: third-party scanners match the literal form and report this
+  // very line as a hardcoded secret.
   if (/^[A-Z][A-Z0-9_]*$/.test(value)) return false;
   return quoted || /\d/.test(value);
 }
