@@ -135,8 +135,8 @@ export const CHECKS: CheckDef[] = [
         false:
           'The target is unclear even with the conversation: nothing concrete was named earlier, or several candidates were named and the message does not say which, or the message starts new work described only in general terms.',
       },
-      // Untuned: the standalone threshold until the conversation eval sets one.
-      threshold: 0.65,
+      threshold: 0.15,
+      // CV fail-precision 0.60 over 11 failing examples: ranks better than standalone (AUC 0.82 vs 0.63) but too thin to stand behind inline.
       inlineEligible: false,
     },
     cause: 'You wrote "it" or "the code" instead of a name.',
@@ -159,14 +159,14 @@ export const CHECKS: CheckDef[] = [
     inlineEligible: true,
     conversation: {
       instructions:
-        'What should be true when the work is finished is known: the message states it, or it was stated earlier in the conversation and the message accepts or continues that work.',
+        'What should be true once the request in the message is done is known: the message states the outcome or the output it wants, or it approves a proposal from the agent that describes the resulting behaviour.',
       criteria: {
-        true: "States the intended end state, or accepts or continues work whose end state the developer or the agent already spelled out, such as approving the agent's description of what the change will do.",
+        true: 'States the intended end state or the output wanted ("so the page shows X", "give me five titles"), or approves a specific proposal in which the agent described what the result will be.',
         false:
-          'Neither the message nor the conversation it continues says what "finished" looks like, or the message starts new work without an end state.',
+          'Only names a step to carry out (commit, push, deploy, merge, review, run something) without an outcome, even when the conversation describes the work around it; or starts new work without an end state.',
       },
-      // Untuned: the standalone threshold until the conversation eval sets one.
-      threshold: 0.35,
+      threshold: 0.2,
+      // CV fail-precision 0.75 over 18 failing examples, below the 0.90 bar.
       inlineEligible: false,
     },
     cause: 'Nothing in the request says what should be true at the end.',
@@ -196,8 +196,8 @@ export const CHECKS: CheckDef[] = [
         false:
           'Asks for something open-ended or sweeping, bundles several unrelated requests, or accepts a broad proposal ("do all of it") whose edges the conversation never set.',
       },
-      // Untuned: the standalone threshold until the conversation eval sets one.
       threshold: 0.45,
+      // Not measurable: 2 failing examples in the conversation set.
       inlineEligible: false,
     },
     cause: 'The request has no edges, so the agent decides how far to go.',
@@ -217,7 +217,7 @@ export const CHECKS: CheckDef[] = [
     },
     threshold: 0.3,
     inlineMargin: 0.2,
-    // CV fail-precision 0.97 over 30 failing examples.
+    // CV fail-precision 1.00 over 30 failing examples (0.97 before the eval redacted).
     inlineEligible: true,
     conversation: {
       instructions:
@@ -226,9 +226,9 @@ export const CHECKS: CheckDef[] = [
         true: 'Names something to leave alone or preserve, or forbids an approach, in the message or earlier in the conversation for this same work, and nothing has withdrawn it.',
         false: 'No limit that applies to the requested work appears in the message or anywhere in the conversation.',
       },
-      // Untuned: the standalone threshold until the conversation eval sets one.
-      threshold: 0.3,
-      inlineEligible: false,
+      threshold: 0.8,
+      // CV fail-precision 0.97 over 34 failing examples. 34 of 40 fixtures fail it, so precision is flattered by the base rate; AUC 0.99.
+      inlineEligible: true,
     },
     cause: 'Nothing in the request is marked off-limits.',
     consequence: 'Something that was working gets rewritten along the way.',
@@ -258,8 +258,8 @@ export const CHECKS: CheckDef[] = [
         false:
           'The failure is described only in general terms, and no actual output or concrete expected-versus-actual pair for it appears anywhere in the conversation.',
       },
-      // Untuned: the standalone threshold until the conversation eval sets one.
       threshold: 0.4,
+      // Not measurable: 1 failing example in the conversation set.
       inlineEligible: false,
     },
     cause: 'The bug is described, but the actual error text is not in the message.',
@@ -279,7 +279,8 @@ export const CHECKS: CheckDef[] = [
     appliesWhen: { gate: 'is_large_change', minProbability: 0.5 },
     threshold: 0.35,
     inlineMargin: 0.2,
-    // CV fail-precision 0.86, below the 0.90 bar.
+    // 8 failing examples, under the 10 the inline bar asks for (CV fail-precision
+    // 1.00 on the redacted run, 0.86 before it).
     inlineEligible: false,
     conversation: {
       instructions:
@@ -288,8 +289,8 @@ export const CHECKS: CheckDef[] = [
         true: 'Asks to plan, propose, outline, or investigate first, or approves a specific plan the agent already described for this change.',
         false: 'Asks for the large change to be carried out directly, and no plan for it appears in the conversation.',
       },
-      // Untuned: the standalone threshold until the conversation eval sets one.
       threshold: 0.35,
+      // Not measurable: 4 failing examples in the conversation set.
       inlineEligible: false,
     },
     cause: 'You asked for a big or risky change without asking to see the approach first.',
@@ -318,9 +319,9 @@ export const CHECKS: CheckDef[] = [
         false:
           'No test, command, or check for this work appears in the message or the conversation, or the message says only "make sure it works".',
       },
-      // Untuned: the standalone threshold until the conversation eval sets one.
-      threshold: 0.6,
-      inlineEligible: false,
+      threshold: 0.75,
+      // CV fail-precision 0.97 over 38 failing examples. 38 of 40 fixtures fail it, so precision is flattered by the base rate; AUC 0.89.
+      inlineEligible: true,
     },
     cause: 'Nothing in the request says how to tell whether it worked.',
     consequence: 'The agent says it worked, and you find out later that it did not.',

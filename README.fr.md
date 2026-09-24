@@ -248,8 +248,9 @@ des prompts notés seuls.
 une relance est envoyée avec les deux derniers échanges (vos prompts et le texte
 final des réponses de Claude, jamais les outils ni leurs sorties), et chaque
 vérification est posée dans sa forme conversationnelle. Un échange contourné par
-`*` est retiré avec sa réponse. Désactivé par défaut. Tant que ces vérifications
-n'ont pas été calibrées, rien ne s'affiche en ligne.
+`*` est retiré avec sa réponse. Désactivé par défaut. Pour l'instant, seules deux
+vérifications conversationnelles s'affichent en ligne : ce qui ne doit pas changer
+et les étapes de vérification.
 
 ## Confidentialité
 

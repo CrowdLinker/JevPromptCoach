@@ -311,9 +311,12 @@ already settled, such as accepting a change Claude described in a named file.
 Only Claude's visible closing text is read, never tool calls, tool output or
 subagent work, and an exchange whose prompt was bypassed with `*` is dropped
 along with its reply. This is off by default because it sends text the plugin
-otherwise never sends. Until the conversation checks have been tuned on
-labelled conversations (see [test/fixtures/README.md](test/fixtures/README.md)),
-it records scores but shows nothing inline.
+otherwise never sends. Measured on 40 labelled follow-ups (see
+[test/fixtures/README.md](test/fixtures/README.md)), Claude's replies make
+"which file or function" rank noticeably better than judging the follow-up
+alone, and leave the other checks level. Only two conversation checks are
+steady enough to show inline so far, what must not change and the verification
+steps; the rest are recorded for the report and stay off the line.
 
 `always` does not use the mechanism the docs suggest. Writing to stderr with a
 non-zero exit displays nothing on Claude Code 2.1.277; a top-level

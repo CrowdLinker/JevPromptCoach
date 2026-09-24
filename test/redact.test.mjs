@@ -62,6 +62,18 @@ const SECRETS = [
   ],
   ['underscored-pass', j('DB_', 'PASS', '=', 'abcDEF123456'), 'abcDEF123456'],
   ['json-password', j('{"pass', 'word": "', 'CorrectHorse99', '"}'), 'CorrectHorse99'],
+  ['password-in-prose', j('the docs pass', 'word is ', 'apps.demo2031'), 'apps.demo2031'],
+  ['secret-in-prose', j('the client secret is ', 'Zq8vN2mK7xP4wL9r'), 'Zq8vN2mK7xP4wL9r'],
+  // No prefix and no label: caught by shape alone.
+  ['hex-32', j('auth token is ', '0123456789abcdef', '0123456789abcdef'), j('0123456789abcdef', '0123456789abcdef')],
+  ['hex-16', j('trace ', '9f86d081', '884c7d65'), j('9f86d081', '884c7d65')],
+  [
+    'hex-64',
+    j('0x', '4c0883a69102937d', '6231471b5dbb6204', 'fe512961708279f0', 'd1e5b7a4c3a2f1e0'),
+    j('4c0883a69102937d', '6231471b5dbb6204'),
+  ],
+  ['random-token', j('use `', 'tok_', '9QwErT7yUiOp3AsDfGh2JkLz', '` for staging'), '9QwErT7yUiOp3AsDfGh2JkLz'],
+  ['random-token-bare', j('it is ', 'xK9mP2qR7vB4nL8w', 'Zt3Yc6Hd', ' now'), j('xK9mP2qR7vB4nL8w', 'Zt3Yc6Hd')],
 ];
 
 test('every credential shape is removed by redact()', () => {
@@ -110,22 +122,37 @@ test('an unlabelled Azure client secret is removed', () => {
   }
 });
 
+test('a commit SHA becomes a marker, so the scorer still sees an identifier was named', () => {
+  const out = redact('Revert commit 4f3a9c2e1b8d7a6f5e4d3c2b1a0987654321fedc');
+  assert.equal(out, 'Revert commit [HEX]');
+});
+
 test('ordinary prose and code are left alone', () => {
   const samples = [
     'Refactor getUserById in src/users/service.ts and keep the signature',
     'Run npm test -- auth.spec.ts to check it',
-    'The commit is 4f3a9c2e1b8d7a6f5e4d3c2b1a0987654321fedc',
     'See https://github.com/CrowdLinker/JevPromptCoach for details',
     // Code and prose that share words with the credential rules.
     'const bypass = userSettings.bypassPrefix',
     'oauth: googleOauthClient, author: someoneElse',
     'Run pwd to see the directory, then reset the password field on the form',
     'The value: 3 and the token count are both logged',
+    'The password is wrong and the token is expired',
     'Open https://example.com/login?next=/dashboard&sig=short',
+    // Long identifiers that the random-token rule must leave alone. Measured on
+    // real history: these shapes are what long mixed tokens mostly are.
+    'Run the CreateUsersTable1695312345678 migration',
+    'Rename 1695312345678-CreateUserTable.ts',
+    'handleUserAuthenticationCallbackForProvider2 is too long',
+    'Set NEXT_PUBLIC_API_BASE_URL_FOR_STAGING_ENV in the pipeline',
+    'Checkout feature/mem-335-implement-application-insights-custom-events',
+    'The id is 550e8400-e29b-41d4-a716-446655440000 and the bundle main.4f3a9c2e.js',
+    'Edit `src/users/UserProfileSettingsPanel2024.tsx` then run `npm test`',
   ];
   for (const s of samples) {
     const out = redact(s);
     assert.ok(!out.includes('[KEY]'), `false positive on: ${s} -> ${out}`);
     assert.ok(!out.includes('[REDACTED]'), `false positive on: ${s} -> ${out}`);
+    assert.ok(!out.includes('[HEX]'), `false positive on: ${s} -> ${out}`);
   }
 });

@@ -60,16 +60,17 @@ const CREDENTIAL_RULES: Rule[] = [
     // The separator must be ':', '=' or a spaced hyphen, and the value may not
     // contain '/', so a path like secret-client/app/main.ts is not a match.
     pattern:
-      /\b(value|secret|password|passwd|token|api[ _-]?key|client[ _-]?secret)\b['"]?\s*(?::|=|-\s)\s*(['"`]?)([^\s'"`,;/\\]{12,})\2/gi,
-    replace: (m: string) => m.replace(/((?::|=|-\s)\s*['"`]?)([^\s'"`,;/\\]{12,})/, '$1[REDACTED]'),
+      /\b(value|secret|password|passwd|token|api[ _-]?key|client[ _-]?secret)\b['"]?\s*(?::|=|-\s|is\s)\s*(['"`]?)([^\s'"`,;/\\]{12,})\2/gi,
+    replace: (m: string) => m.replace(/((?::|=|-\s|\bis\s)\s*['"`]?)([^\s'"`,;/\\]{12,})/i, '$1[REDACTED]'),
   },
   {
     name: 'labelled-password',
     // Passwords are short more often than keys are, so the length floor is
     // lower than for the generic labels above; the label itself is specific.
     // The optional quote after the label covers a JSON key: "password": "x".
-    pattern: /\b(password|passwd|pwd)\b['"]?\s*[:=]\s*(['"`]?)([^\s'"`,;]{6,})\2/gi,
-    replace: (m: string) => m.replace(/([:=]\s*['"`]?)([^\s'"`,;]{6,})/, '$1[REDACTED]'),
+    // Prose counts too: "the password is x" was found in real history.
+    pattern: /\b(password|passwd|pwd)\b['"]?(?:\s*[:=]|\s+is)\s*(['"`]?)([^\s'"`,;]{6,})\2/gi,
+    replace: (m: string) => m.replace(/((?:[:=]|\bis)\s*['"`]?)([^\s'"`,;]{6,})/i, '$1[REDACTED]'),
   },
   {
     name: 'assigned-secret',
@@ -80,7 +81,46 @@ const CREDENTIAL_RULES: Rule[] = [
       /\b([A-Za-z_][A-Za-z0-9_]*(?:KEY|TOKEN|SECRET|PASSWORD|PASSWD|CREDENTIAL)S?|(?:[A-Za-z0-9]+_)+(?:PASS|PWD|AUTH))\b(\s*[:=]\s*)(['"]?)([^\s'"`,;]{6,})\3/gi,
     replace: (m: string) => m.replace(/([:=]\s*['"]?)([^\s'"`,;]{6,})/, '$1[REDACTED]'),
   },
+  {
+    name: 'long-hex',
+    // Hashes, hex tokens and hex-encoded keys: 16 or more hex characters with a
+    // digit among them. Commit SHAs go too; the marker still tells the scorer a
+    // specific identifier was named. UUIDs survive: their hex runs are shorter.
+    // An 0x prefix is how hex private keys are usually written.
+    pattern: /(?<![\w-])(?:0x)?(?=[0-9a-f]*\d)[0-9a-f]{16,}(?![\w-])/gi,
+    replace: '[HEX]',
+  },
+  {
+    name: 'random-token',
+    // A secret with no known prefix and no label. Last, so the named rules
+    // above get first say. See looksRandom for what separates it from a long
+    // identifier.
+    pattern: /(?<![\w/.~+=-])[A-Za-z0-9_+=-]{20,}(?![\w/.~+=-])/g,
+    replace: (m: string) => (m.split(/[-_+=]/).some(looksRandom) ? '[KEY]' : m),
+  },
 ];
+
+/**
+ * Whether one chunk of a token reads as random rather than as words.
+ *
+ * Measured on real prompts and agent replies before it was written: the long
+ * mixed tokens there are mostly migration names (a CamelCase word and a
+ * 13-digit timestamp), slugs and constant names, and all of them contain a run
+ * of five or more lowercase letters. Keys and tokens rarely do, and they switch
+ * between letters, digits and case constantly.
+ */
+function looksRandom(chunk: string): boolean {
+  if (chunk.length < 16) return false;
+  if (/[a-z]{5,}/.test(chunk)) return false;
+  const digits = (chunk.match(/\d/g) ?? []).length;
+  const lower = (chunk.match(/[a-z]/g) ?? []).length;
+  const upper = (chunk.match(/[A-Z]/g) ?? []).length;
+  if (digits < 2 || lower < 2 || upper < 2) return false;
+  const kind = (c: string): number => (/\d/.test(c) ? 0 : /[a-z]/.test(c) ? 1 : 2);
+  let switches = 0;
+  for (let i = 1; i < chunk.length; i += 1) if (kind(chunk[i]!) !== kind(chunk[i - 1]!)) switches += 1;
+  return switches >= chunk.length / 3;
+}
 
 const EMAIL_RULE: Rule = {
   name: 'email',

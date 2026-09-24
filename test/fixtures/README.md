@@ -103,10 +103,10 @@ npm run eval -- --conversations --tune
 
 The eval refuses a file with unlabelled entries, so the order cannot be got
 wrong by accident. Results go to `test/eval-conversations-results.txt` and
-`.json`, beside the standalone ones, and like them hold no prompt text. Until
-this set has been labelled and tuned, no conversation check is allowed onto the
-inline line: with replies on, `always` mode sends and records scores but shows
-nothing.
+`.json`, beside the standalone ones, and like them hold no prompt text. A
+conversation check reaches the inline line only by the same rule as a
+standalone one: cross-validated fail-precision of at least 0.90 over at least
+ten failing examples.
 
 Forty is enough to measure the common failures and thin for the rare ones. A
 check needs at least five failing examples to be measured at all and ten to be

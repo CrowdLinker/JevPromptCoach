@@ -317,9 +317,18 @@ test('with replies on, the prompt being scored is not repeated when the transcri
   assert.equal(texts.length, 5);
 });
 
-test('with replies on, nothing is shown until the conversation checks are tuned', async () => {
-  const { stdout } = await runHook('redact', FOLLOW_UP, { transcript: TRANSCRIPT, env: REPLIES_ON });
-  assert.equal(stdout, '', 'no conversation check is inline-eligible before the eval sets one');
+test('with replies on, only conversation checks the eval cleared reach the inline line', async () => {
+  answerFor = () => 0.01;
+  const { systemMessage } = JSON.parse(
+    (await runHook('redact', FOLLOW_UP, { transcript: TRANSCRIPT, env: REPLIES_ON })).stdout,
+  );
+  const missing = systemMessage.split('\n')[1];
+  assert.match(missing, /what must not change/);
+  assert.match(missing, /the verification steps/);
+  // Every check failed on the wire; these did not clear the conversation eval.
+  for (const never of ['which file or function', 'what "done" looks like', 'a single focused requirement']) {
+    assert.ok(!missing.includes(never), `${never} is not inline-eligible in conversation`);
+  }
 });
 
 test('replies are off by default: the transcript is not read', async () => {

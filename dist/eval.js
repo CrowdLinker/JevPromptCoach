@@ -5,10 +5,14 @@ import {
   MODEL,
   USD_PER_INPUT_TOKEN,
   scoreMany
-} from "./chunk-CYMNZ7WV.js";
+} from "./chunk-DZX73LZX.js";
 import {
-  apiKey
+  apiKey,
+  loadConfig
 } from "./chunk-2ZQCJBWZ.js";
+import {
+  applyPrivacy
+} from "./chunk-Y4PX5WS7.js";
 
 // src/eval.ts
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
@@ -48,6 +52,8 @@ async function main() {
     );
     process.exit(1);
   }
+  const { privacy } = loadConfig();
+  const redact = (text) => applyPrivacy(text, privacy === "metadata_only" ? "redact" : privacy).text ?? "";
   let inputTokens = 0;
   let records;
   if (process.argv.includes("--cached") && existsSync(cachePath)) {
@@ -60,7 +66,11 @@ async function main() {
     process.stderr.write(`Scoring ${fixtures.length} fixtures\u2026
 `);
     records = await scoreMany(
-      fixtures.map((f) => ({ hash: f.id, text: f.text, ...f.context ? { conversation: f.context } : {} })),
+      fixtures.map((f) => ({
+        hash: f.id,
+        text: redact(f.text),
+        ...f.context ? { conversation: f.context.map((t) => ({ role: t.role, text: redact(t.text) })) } : {}
+      })),
       {
         onUsage: (u) => {
           inputTokens += u.input_tokens;
@@ -136,7 +146,7 @@ async function main() {
     const measurable = fail.support >= MIN_SUPPORT && fail.precision !== null;
     const clears = measurable && fail.precision >= TARGET_PRECISION;
     if (measurable && !clears) allClear = false;
-    const verdict = !measurable ? `too few fail cases (n=${fail.support}) \u2014 not measurable` : clears ? "ok" : `BELOW ${TARGET_PRECISION}`;
+    const verdict = !measurable ? fail.support < MIN_SUPPORT ? `too few fail cases (n=${fail.support}) \u2014 not measurable` : "never predicts fail at this threshold \u2014 not measurable" : clears ? "ok" : `BELOW ${TARGET_PRECISION}`;
     lines.push(
       `  ${def.id.padEnd(20)} ${thresholdOf(def).toFixed(2)} |  ${fmt(fail.precision)}  ${fmt(fail.recall)} ${String(fail.support).padStart(2)} |  ${fmt(pass.precision)}  ${fmt(pass.recall)} ${String(pass.support).padStart(2)} | ${verdict}${tune ? `  (best thr ${best})` : ""}`
     );

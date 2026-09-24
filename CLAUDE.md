@@ -49,7 +49,9 @@ easy to break with a change that looks reasonable.
 - **Conversation checks are calibrated separately.** Each check's
   `conversation` block in `src/checks.ts` has its own threshold and inline
   eligibility, set from `npm run eval -- --conversations` on the gitignored
-  `test/fixtures/conversations.json`. None is inline-eligible until measured.
+  `test/fixtures/conversations.json`. Only constraints and verification are
+  inline-eligible so far; the labels behind them were set by the agent, not a
+  person, and the set is 40 follow-ups, so treat them as provisional.
 - **`dist/` is committed and must match `src/`.** Claude Code installs with
   `--ignore-scripts`, so nothing is ever built at install time. Run
   `npm run build` after any source change; CI fails if it drifts.

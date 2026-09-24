@@ -9,7 +9,7 @@ import {
 } from "./chunk-2ZQCJBWZ.js";
 import {
   applyPrivacy
-} from "./chunk-VFFPDUVA.js";
+} from "./chunk-Y4PX5WS7.js";
 
 // src/hook.ts
 import { readFileSync } from "node:fs";
@@ -50,7 +50,7 @@ async function main() {
   }
   if (config.mode !== "always") return;
   if (stored === null) return;
-  const { runInline } = await import("./inline-45KMCJYB.js");
+  const { runInline } = await import("./inline-4ZSRJ5YW.js");
   const line = await runInline(stored, hash, config, {
     session: entry.session,
     ts: entry.ts,

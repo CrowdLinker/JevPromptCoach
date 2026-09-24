@@ -1,0 +1,152 @@
+{
+  "ranAt": "2026-09-24T21:38:29.293Z",
+  "model": "jev-latest",
+  "fixtures": 40,
+  "set": "conversations",
+  "inputTokens": 111831,
+  "targetPrecision": 0.9,
+  "checks": {
+    "named_target": {
+      "threshold": 0.15,
+      "fail": {
+        "precision": 1,
+        "recall": 0.09090909090909091,
+        "support": 11
+      },
+      "pass": {
+        "precision": 0.7435897435897436,
+        "recall": 1,
+        "support": 29
+      },
+      "measurable": true,
+      "clearsTarget": true
+    },
+    "success_condition": {
+      "threshold": 0.2,
+      "fail": {
+        "precision": 1,
+        "recall": 0.16666666666666666,
+        "support": 18
+      },
+      "pass": {
+        "precision": 0.5945945945945946,
+        "recall": 1,
+        "support": 22
+      },
+      "measurable": true,
+      "clearsTarget": true
+    },
+    "bounded_scope": {
+      "threshold": 0.45,
+      "fail": {
+        "precision": 0.2,
+        "recall": 0.5,
+        "support": 2
+      },
+      "pass": {
+        "precision": 0.9714285714285714,
+        "recall": 0.8947368421052632,
+        "support": 38
+      },
+      "measurable": false,
+      "clearsTarget": false
+    },
+    "constraints": {
+      "threshold": 0.8,
+      "fail": {
+        "precision": 0.9714285714285714,
+        "recall": 1,
+        "support": 34
+      },
+      "pass": {
+        "precision": 1,
+        "recall": 0.8333333333333334,
+        "support": 6
+      },
+      "measurable": true,
+      "clearsTarget": true
+    },
+    "repro_included": {
+      "threshold": 0.4,
+      "fail": {
+        "precision": 0.5,
+        "recall": 1,
+        "support": 1
+      },
+      "pass": {
+        "precision": 1,
+        "recall": 0.5,
+        "support": 2
+      },
+      "measurable": false,
+      "clearsTarget": false
+    },
+    "plan_first": {
+      "threshold": 0.35,
+      "fail": {
+        "precision": 1,
+        "recall": 1,
+        "support": 4
+      },
+      "pass": {
+        "precision": 1,
+        "recall": 1,
+        "support": 2
+      },
+      "measurable": false,
+      "clearsTarget": false
+    },
+    "verification": {
+      "threshold": 0.75,
+      "fail": {
+        "precision": 0.9736842105263158,
+        "recall": 0.9736842105263158,
+        "support": 38
+      },
+      "pass": {
+        "precision": 0.5,
+        "recall": 0.5,
+        "support": 2
+      },
+      "measurable": true,
+      "clearsTarget": true
+    },
+    "_crossValidated": {
+      "named_target": {
+        "precision": 0.6,
+        "recall": 0.2727272727272727,
+        "support": 11
+      },
+      "success_condition": {
+        "precision": 0.75,
+        "recall": 0.16666666666666666,
+        "support": 18
+      },
+      "bounded_scope": {
+        "precision": 0.25,
+        "recall": 0.5,
+        "support": 2
+      },
+      "constraints": {
+        "precision": 0.9705882352941176,
+        "recall": 0.9705882352941176,
+        "support": 34
+      },
+      "repro_included": {
+        "precision": 1,
+        "recall": 1,
+        "support": 1
+      },
+      "plan_first": {
+        "precision": 1,
+        "recall": 0.75,
+        "support": 4
+      },
+      "verification": {
+        "precision": 0.9736842105263158,
+        "recall": 0.9736842105263158,
+        "support": 38
+      }
+    }
+  }
+}

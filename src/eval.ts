@@ -15,10 +15,11 @@
  */
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { type CheckDef, CHECKS, type CheckId, GATES } from './checks.js';
-import { apiKey } from './config.js';
+import { apiKey, loadConfig } from './config.js';
 import type { Turn } from './conversation.js';
 import { MODEL, USD_PER_INPUT_TOKEN } from './jev.js';
 import type { ScoreRecord } from './log.js';
+import { applyPrivacy } from './redact.js';
 import { scoreMany } from './score.js';
 
 interface Fixture {
@@ -83,6 +84,13 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
+  // The eval sends what the plugin would send: every text through the
+  // configured privacy level, as `always` mode and the commands do. Under
+  // metadata_only nothing is ever scored, so the eval uses `redact` instead.
+  const { privacy } = loadConfig();
+  const redact = (text: string): string =>
+    applyPrivacy(text, privacy === 'metadata_only' ? 'redact' : privacy).text ?? '';
+
   let inputTokens = 0;
   let records: ScoreRecord[];
   if (process.argv.includes('--cached') && existsSync(cachePath)) {
@@ -93,7 +101,11 @@ async function main(): Promise<void> {
   } else {
     process.stderr.write(`Scoring ${fixtures.length} fixtures…\n`);
     records = await scoreMany(
-      fixtures.map((f) => ({ hash: f.id, text: f.text, ...(f.context ? { conversation: f.context } : {}) })),
+      fixtures.map((f) => ({
+        hash: f.id,
+        text: redact(f.text),
+        ...(f.context ? { conversation: f.context.map((t) => ({ role: t.role, text: redact(t.text) })) } : {}),
+      })),
       {
         onUsage: (u) => {
           inputTokens += u.input_tokens;
@@ -178,7 +190,9 @@ async function main(): Promise<void> {
     const clears = measurable && fail.precision! >= TARGET_PRECISION;
     if (measurable && !clears) allClear = false;
     const verdict = !measurable
-      ? `too few fail cases (n=${fail.support}) — not measurable`
+      ? fail.support < MIN_SUPPORT
+        ? `too few fail cases (n=${fail.support}) — not measurable`
+        : 'never predicts fail at this threshold — not measurable'
       : clears
         ? 'ok'
         : `BELOW ${TARGET_PRECISION}`;

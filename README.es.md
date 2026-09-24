@@ -239,8 +239,9 @@ prompts puntuados solos.
 un seguimiento se envía con los dos últimos intercambios (tus prompts y el texto
 final de las respuestas de Claude, nunca las herramientas ni su salida), y cada
 comprobación se hace en su forma conversacional. Un intercambio saltado con `*`
-se descarta junto con su respuesta. Desactivado por defecto. Hasta que esas
-comprobaciones estén calibradas, no se muestra nada en línea.
+se descarta junto con su respuesta. Desactivado por defecto. Por ahora solo dos
+comprobaciones conversacionales se muestran en línea: lo que no debe cambiar y
+los pasos de verificación.
 
 ## Privacidad
 

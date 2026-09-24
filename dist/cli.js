@@ -30,7 +30,7 @@ import {
   runPool,
   scoreMany,
   scoreOne
-} from "./chunk-CYMNZ7WV.js";
+} from "./chunk-DZX73LZX.js";
 import {
   ENV_PATH,
   LOG_PATH,
@@ -41,7 +41,7 @@ import {
 } from "./chunk-2ZQCJBWZ.js";
 import {
   applyPrivacy
-} from "./chunk-VFFPDUVA.js";
+} from "./chunk-Y4PX5WS7.js";
 
 // src/cli.ts
 import { readFileSync, writeFileSync } from "node:fs";
