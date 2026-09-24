@@ -235,11 +235,13 @@ misma sesión, y solo se puntúa el nuevo. Activado por defecto;
 `JEVPROMPTCOACH_SESSION_CONTEXT=0` lo desactiva. Los umbrales se calibraron con
 prompts puntuados solos.
 
-**Las respuestas de Claude, si lo activas.** Con `JEVPROMPTCOACH_SESSION_REPLIES=1`,
-un seguimiento se envía con los dos últimos intercambios (tus prompts y el texto
-final de las respuestas de Claude, nunca las herramientas ni su salida), y cada
-comprobación se hace en su forma conversacional. Un intercambio saltado con `*`
-se descarta junto con su respuesta. Desactivado por defecto. Por ahora solo dos
+**También las respuestas de Claude.** Un seguimiento se envía con los dos últimos
+intercambios (tus prompts y el texto final de las respuestas de Claude, nunca las
+herramientas ni su salida), y cada comprobación se hace en su forma
+conversacional. Un intercambio saltado con `*` se descarta junto con su
+respuesta. Las respuestas pasan por la misma depuración que tus prompts.
+Activado por defecto; `JEVPROMPTCOACH_SESSION_REPLIES=0` envía solo tus prompts
+anteriores. Por ahora solo dos
 comprobaciones conversacionales se muestran en línea: lo que no debe cambiar y
 los pasos de verificación.
 
@@ -273,7 +275,7 @@ sin prefijo conocido ni etiqueta parece un hash de commit y no se elimina.
 | `/jevpromptcoach:report` | Los prompts registrados sin puntuar, depurados, por lotes |
 | `config backfill` | Tu historial, depurado, por lotes — **después** de una estimación de coste y una confirmación explícita |
 | modo `always` | Cada prompt al enviarlo, depurado, más hasta dos prompts anteriores de la misma sesión como contexto, también depurados |
-| modo `always`, respuestas activadas | Igual, pero el contexto son los dos últimos intercambios: tus prompts y el texto final de las respuestas de Claude, depurados. Solo con `JEVPROMPTCOACH_SESSION_REPLIES=1` |
+| modo `always`, respuestas de Claude | Por defecto, el contexto son los dos últimos intercambios: tus prompts y el texto final de las respuestas de Claude, depurados. `JEVPROMPTCOACH_SESSION_REPLIES=0` quita las respuestas |
 | En cualquier otro momento | Nada |
 
 Sin telemetría. Sin ningún otro destino de red. La clave de API se lee del

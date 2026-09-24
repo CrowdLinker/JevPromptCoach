@@ -143,7 +143,8 @@ const savedScore = (extra = {}) => ({
 });
 
 /**
- * A follow-up carries the two prompts before it in the same session. They are
+ * With replies turned off, a follow-up carries the two prompts before it in the
+ * same session. They are
  * written to the log as raw text, as if captured under `raw`, so the test also
  * proves they are redacted again on the way out under `redact`.
  */
@@ -154,7 +155,7 @@ const EARLIER = [
   { ts: '2026-01-01T00:03:00.000Z', session: 's', hash: 'h2', text: 'Open /Users/someone/clients/acme/app/main.ts' },
 ];
 
-test('a follow-up sends the two earlier prompts, redacted, and scores only the last', async () => {
+test('without a transcript, a follow-up sends the two earlier prompts, redacted, and scores only the last', async () => {
   captured.length = 0;
   const result = await runHook('redact', FOLLOW_UP, { log: EARLIER });
   assert.equal(result.status, 0);
@@ -331,15 +332,36 @@ test('with replies on, only conversation checks the eval cleared reach the inlin
   }
 });
 
-test('replies are off by default: the transcript is not read', async () => {
+test('with a transcript, the first prompt of a session is still scored alone', async () => {
   captured.length = 0;
-  await runHook('redact', FOLLOW_UP, { transcript: TRANSCRIPT, log: EARLIER });
+  await runHook('redact', FOLLOW_UP, { transcript: [say('user', FOLLOW_UP)] });
+  assert.equal(captured[0].state.messages.length, 1);
+  assert.equal(captured[0].state.messages[0].role, undefined, 'judged by the standalone criteria');
+});
+
+test('replies are on by default', async () => {
+  captured.length = 0;
+  await runHook('redact', FOLLOW_UP, { transcript: TRANSCRIPT });
+  assert.deepEqual(
+    captured[0].state.messages.map((m) => m.role),
+    ['developer', 'agent', 'developer', 'agent', 'developer'],
+  );
+});
+
+test('JEVPROMPTCOACH_SESSION_REPLIES=0 leaves the replies out and sends earlier prompts only', async () => {
+  captured.length = 0;
+  await runHook('redact', FOLLOW_UP, {
+    transcript: TRANSCRIPT,
+    log: EARLIER,
+    env: { JEVPROMPTCOACH_SESSION_REPLIES: '0' },
+  });
   const { state } = captured[0];
   assert.ok(
     state.messages.every((m) => m.role === undefined),
-    'no agent reply without the opt-in',
+    'no agent reply when turned off',
   );
   assert.ok(!JSON.stringify(state).includes('Want me to commit'));
+  assert.equal(state.messages.length, 3, 'two earlier prompts from the log, then the one being scored');
 });
 
 test('with replies on, metadata_only still sends nothing', async () => {

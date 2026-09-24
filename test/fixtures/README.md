@@ -64,8 +64,8 @@ id, the prompt verbatim, a label per check, and the two applicability gates.
 ## Conversation fixtures
 
 A follow-up such as "yes, commit it" can only be judged against what came
-before it. When `always` mode is told to send the agent's replies
-(`JEVPROMPTCOACH_SESSION_REPLIES=1`), each check is asked in its conversation
+before it. When `always` mode sends the agent's replies, which it does unless
+`JEVPROMPTCOACH_SESSION_REPLIES=0`, each check is asked in its conversation
 form instead, and those forms have their own thresholds. They are measured on a
 second fixture set, built the same way and kept off the repository for the same
 reasons, with one more: it also holds the agent's replies, which quote code and

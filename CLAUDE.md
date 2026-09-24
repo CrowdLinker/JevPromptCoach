@@ -41,11 +41,12 @@ easy to break with a change that looks reasonable.
   test asserts it on the wire.
 - **`metadata_only` means no text leaves the machine.** Any new code path that
   sends text must check for it.
-- **Claude's replies are opt-in and filtered in `src/conversation.ts`.** Only
-  the closing visible text of a turn is read; tool calls, tool output, thinking
-  and subagent records never leave that module, and an exchange whose prompt
-  was bypassed with `*` is dropped with its reply. Replies stay off unless
-  `JEVPROMPTCOACH_SESSION_REPLIES` is set. The wire tests cover each filter.
+- **Claude's replies are filtered in `src/conversation.ts`.** Only the closing
+  visible text of a turn is read; tool calls, tool output, thinking and
+  subagent records never leave that module, and an exchange whose prompt was
+  bypassed with `*` is dropped with its reply. Replies are on by default and go
+  through `applyPrivacy` like prompts; `JEVPROMPTCOACH_SESSION_REPLIES=0` turns
+  them off. The wire tests cover each filter.
 - **Conversation checks are calibrated separately.** Each check's
   `conversation` block in `src/checks.ts` has its own threshold and inline
   eligibility, set from `npm run eval -- --conversations` on the gitignored

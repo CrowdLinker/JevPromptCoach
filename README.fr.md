@@ -244,11 +244,12 @@ même session, et seul le nouveau est noté. Activé par défaut ;
 `JEVPROMPTCOACH_SESSION_CONTEXT=0` le désactive. Les seuils ont été calibrés sur
 des prompts notés seuls.
 
-**Les réponses de Claude, sur demande.** Avec `JEVPROMPTCOACH_SESSION_REPLIES=1`,
-une relance est envoyée avec les deux derniers échanges (vos prompts et le texte
-final des réponses de Claude, jamais les outils ni leurs sorties), et chaque
-vérification est posée dans sa forme conversationnelle. Un échange contourné par
-`*` est retiré avec sa réponse. Désactivé par défaut. Pour l'instant, seules deux
+**Les réponses de Claude aussi.** Une relance est envoyée avec les deux derniers
+échanges (vos prompts et le texte final des réponses de Claude, jamais les outils
+ni leurs sorties), et chaque vérification est posée dans sa forme
+conversationnelle. Un échange contourné par `*` est retiré avec sa réponse. Les
+réponses passent par le même expurgeage que vos prompts. Activé par défaut ;
+`JEVPROMPTCOACH_SESSION_REPLIES=0` n'envoie que vos prompts précédents. Pour l'instant, seules deux
 vérifications conversationnelles s'affichent en ligne : ce qui ne doit pas changer
 et les étapes de vérification.
 
@@ -283,7 +284,7 @@ retiré.
 | `/jevpromptcoach:report` | Les prompts journalisés pas encore notés, expurgés, par lots |
 | `config backfill` | Votre historique, expurgé, par lots — **après** une estimation de coût et une confirmation explicite |
 | mode `always` | Chaque prompt au moment où vous l'envoyez, expurgé, plus jusqu'à deux prompts précédents de la même session comme contexte, expurgés eux aussi |
-| mode `always`, réponses activées | Idem, mais le contexte est les deux derniers échanges : vos prompts et le texte final des réponses de Claude, expurgés. Seulement avec `JEVPROMPTCOACH_SESSION_REPLIES=1` |
+| mode `always`, réponses de Claude | Par défaut, le contexte est les deux derniers échanges : vos prompts et le texte final des réponses de Claude, expurgés. `JEVPROMPTCOACH_SESSION_REPLIES=0` retire les réponses |
 | Sinon, jamais | Rien |
 
 Aucune télémétrie. Aucune autre destination réseau. La clé d'API est lue depuis
