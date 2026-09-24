@@ -41,10 +41,12 @@ const CREDENTIAL_RULES: Rule[] = [
     // password is not. Runs before the email rule, which would otherwise
     // swallow "password@host" by accident and leave the next one in place.
     // The user may be empty (redis://:pw@host), and the password may hold '@'
-    // or '/': it runs lazily to the last '@' before a host. A port followed by
-    // a path (host:8080/@handle) is not a password.
+    // or '/': it runs greedily to the last '@' in the token that a host
+    // follows. That can take a path with an '@' in it along with the password;
+    // masking too much is the safe way round. A port followed by a path
+    // (host:8080/@handle) is not a password.
     pattern:
-      /\b([a-z][a-z0-9+.-]{0,30}:\/\/[^\s:/@'"`]{0,256}:)(?!\d{1,5}(?:\/|$))[^\s'"`]{1,256}?@(?=[^\s@/'"`]{1,256}(?:[\s/'"`:?#]|$))/gi,
+      /\b([a-z][a-z0-9+.-]{0,30}:\/\/[^\s:/@'"`]{0,256}:)(?!\d{1,5}(?:\/|$))[^\s'"`]{1,256}@(?=[^\s@/'"`]{1,256}(?:[\s/'"`:?#]|$))/gi,
     replace: '$1[REDACTED]@',
   },
   { name: 'azure-sas', pattern: /([?&]sig=)[A-Za-z0-9%+/=]{16,}/g, replace: '$1[REDACTED]' },

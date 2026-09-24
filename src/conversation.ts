@@ -45,7 +45,12 @@ const EXCLUDED: ReadonlySet<SkipReason> = new Set([
   'session_meta',
 ]);
 
-function clampReply(text: string): string {
+/**
+ * Keep the end of a reply. Only ever applied to text that has already been
+ * redacted: a cut made first could split a credential into a fragment that no
+ * redaction rule recognises.
+ */
+export function clampReply(text: string): string {
   return text.length <= MAX_REPLY_CHARS ? text : `…\n${text.slice(-(MAX_REPLY_CHARS - 2))}`;
 }
 
@@ -76,7 +81,8 @@ function isOtherSender(record: TranscriptRecord): boolean {
   return (
     record.type === 'user' &&
     record.promptSource !== undefined &&
-    !record.isMeta &&
+    // A meta record from the system or an SDK is still a message nobody typed.
+    (!record.isMeta || record.promptSource === 'system' || record.promptSource === 'sdk') &&
     !(Array.isArray(record.message?.content) && record.message.content.some((b) => blockType(b) === 'tool_result'))
   );
 }
@@ -84,7 +90,12 @@ function isOtherSender(record: TranscriptRecord): boolean {
 /** Feed transcript records in order; read `exchanges` after `close()`. */
 class ExchangeBuilder {
   readonly exchanges: Exchange[] = [];
-  private current: (Exchange & { excluded: boolean }) | null = null;
+  /**
+   * `excluded` says why an exchange is dropped: 'prompt' when its prompt must
+   * not be shown (bypassed, a slash command, not typed), 'sender' when it is
+   * only a boundary after a message nobody typed.
+   */
+  private current: (Exchange & { excluded: 'prompt' | 'sender' | null }) | null = null;
   private parts: string[] = [];
 
   private readonly bypassPrefix: string;
@@ -96,9 +107,11 @@ class ExchangeBuilder {
   add(record: TranscriptRecord): void {
     if (record.isSidechain) return;
     if (isHumanPrompt(record) || isQueuedPrompt(record)) {
-      // A prompt queued while the agent works on an excluded one inherits the
-      // exclusion: the text that follows still answers the excluded prompt.
-      const inheritsExclusion = isQueuedPrompt(record) && this.current?.excluded === true;
+      // A prompt queued while the agent works on a prompt that must not be
+      // shown inherits that exclusion: the text that follows still answers it.
+      // A boundary left by a system or SDK message hides nothing, so a queued
+      // prompt after one stays its own exchange.
+      const inheritsExclusion = isQueuedPrompt(record) && this.current?.excluded === 'prompt';
       this.close();
       const raw = textOf(record.message?.content);
       const prompt = stripPreamble(raw);
@@ -109,13 +122,13 @@ class ExchangeBuilder {
         reply: '',
         ts: record.timestamp ?? '',
         session: record.sessionId ?? '',
-        excluded: inheritsExclusion || !prompt || (reason !== null && EXCLUDED.has(reason)),
+        excluded: inheritsExclusion || !prompt || (reason !== null && EXCLUDED.has(reason)) ? 'prompt' : null,
       };
       return;
     }
     if (isOtherSender(record)) {
       this.close();
-      this.current = { prompt: '', key: '', reply: '', ts: '', session: '', excluded: true };
+      this.current = { prompt: '', key: '', reply: '', ts: '', session: '', excluded: 'sender' };
       return;
     }
     if (record.type !== 'assistant' || !this.current) return;
@@ -138,7 +151,8 @@ class ExchangeBuilder {
   close(): void {
     if (this.current && !this.current.excluded) {
       const { prompt, key, ts, session } = this.current;
-      this.exchanges.push({ prompt, key, ts, session, reply: clampReply(this.parts.join('\n\n')) });
+      // Unclamped: the caller redacts first and clamps after (clampReply).
+      this.exchanges.push({ prompt, key, ts, session, reply: this.parts.join('\n\n') });
     }
     this.current = null;
     this.parts = [];

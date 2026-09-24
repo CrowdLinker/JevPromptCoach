@@ -4,7 +4,7 @@
  */
 import { CHECKS } from './checks.js';
 import { type Config, sessionContextEnabled, sessionRepliesEnabled } from './config.js';
-import { recentTurns, type Turn } from './conversation.js';
+import { clampReply, recentTurns, type Turn } from './conversation.js';
 import { appendScores, readScores, recentSessionPrompts } from './log.js';
 import { applyPrivacy } from './redact.js';
 import { clampPrompt, interpret, type PromptScore, scoreOne } from './score.js';
@@ -57,13 +57,17 @@ const NO_CONTEXT: SessionContext = { prompts: [], conversation: [] };
  */
 function sessionContext(config: Config, at: InlineAt): SessionContext {
   if (at.session === 'unknown' || !sessionContextEnabled()) return NO_CONTEXT;
-  // Clamped before redaction, so a huge earlier paste costs no more to redact
-  // than the prompt itself; the scorer would clamp it to this size anyway.
-  const safe = (text: string): string | null => applyPrivacy(clampPrompt(text), config.privacy).text;
+  // Redacted whole, then clamped: a cut made first can split a credential into
+  // a fragment no rule recognises. Redaction is linear, so the whole text is
+  // cheap; src/redact.ts bounds every quantifier for that reason.
+  const safe = (text: string, clamp: (t: string) => string = clampPrompt): string | null => {
+    const redacted = applyPrivacy(text, config.privacy).text;
+    return redacted === null ? null : clamp(redacted);
+  };
   if (sessionRepliesEnabled() && at.transcriptPath) {
     try {
       const conversation = recentTurns(at.transcriptPath, at.promptKey, CONTEXT_EXCHANGES, config.bypassPrefix)
-        .map((turn) => ({ role: turn.role, text: safe(turn.text) }))
+        .map((turn) => ({ role: turn.role, text: safe(turn.text, turn.role === 'agent' ? clampReply : clampPrompt) }))
         .filter((turn): turn is Turn => turn.text !== null);
       return { prompts: [], conversation };
     } catch {

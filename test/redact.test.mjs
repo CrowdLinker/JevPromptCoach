@@ -67,6 +67,11 @@ const SECRETS = [
   ['url-credentials-empty-user', j('redis://:', 's3cr3tPass', '@localhost:6379'), 's3cr3tPass'],
   ['url-credentials-at-in-password', j('postgres://app:', 'p@ss9word', '@db.internal/prod'), 'ss9word'],
   ['url-credentials-slash-in-password', j('postgres://app:', 'ab/cd9xyz', '@db.internal/prod'), 'cd9xyz'],
+  [
+    'url-credentials-at-and-slash-in-password',
+    j('postgres://app:', 'abc123@MiddlePassphrase123/rest', '@db.internal/prod'),
+    'MiddlePassphrase123',
+  ],
   // No prefix and no label: caught by shape alone.
   ['hex-32', j('auth token is ', '0123456789abcdef', '0123456789abcdef'), j('0123456789abcdef', '0123456789abcdef')],
   ['hex-16', j('trace ', '9f86d081', '884c7d65'), j('9f86d081', '884c7d65')],

@@ -5,7 +5,7 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { CHECKS, GATES } from './checks.js';
 import { apiKey, apiKeySource, ENV_PATH, LOG_PATH, loadConfig, saveConfig } from './config.js';
-import { readConversations, toTurns } from './conversation.js';
+import { clampReply, readConversations, toTurns } from './conversation.js';
 import { buildPairs, detectCorrections, estimateCorrectionTokens } from './correction.js';
 import { promptHash } from './hash.js';
 import { readHistory } from './history.js';
@@ -467,7 +467,11 @@ async function cmdConversationFixturesInit(argv: string[]): Promise<void> {
   const picked = sampleByLength([...candidates.values()], (c) => c.text.length, count);
   const fixtures = picked.map((c, i) => ({
     id: `c${String(i).padStart(2, '0')}`,
-    context: c.context.map((turn) => ({ role: turn.role, text: redact(turn.text) })),
+    // Redacted before the reply is clamped, as the live path does.
+    context: c.context.map((turn) => ({
+      role: turn.role,
+      text: turn.role === 'agent' ? clampReply(redact(turn.text)) : redact(turn.text),
+    })),
     text: redact(c.text),
     labels: Object.fromEntries(CHECKS.map((check) => [check.id, null])),
     gates: Object.fromEntries(GATES.map((g) => [g.id, null])),

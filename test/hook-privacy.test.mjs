@@ -416,6 +416,69 @@ test("a prompt queued during a bypassed turn does not carry that turn's reply", 
   assert.ok(!JSON.stringify(captured[0]).includes('SECRETPROMPT'), 'the bypassed turn reached the wire');
 });
 
+test('a meta system or SDK message still closes the exchange before it', async () => {
+  captured.length = 0;
+  const transcript = [
+    say('user', 'Refactor src/queue/worker.ts to back off exponentially'),
+    say('assistant', text('the real reply')),
+    say('user', 'a meta notice nobody typed', { promptSource: 'system', isMeta: true }),
+    say('assistant', text('text answering the meta notice')),
+  ];
+  await runHook('redact', FOLLOW_UP, { transcript });
+  const sent = JSON.stringify(captured[0]);
+  assert.ok(sent.includes('the real reply'));
+  assert.ok(!sent.includes('answering the meta notice'), 'text after a meta system message was taken as a reply');
+});
+
+test('a queued prompt after a system message is kept as its own exchange', async () => {
+  captured.length = 0;
+  const transcript = [
+    say('user', 'Refactor src/queue/worker.ts to back off exponentially'),
+    say('assistant', text('first reply')),
+    say('user', 'a notice nobody typed', { promptSource: 'system' }),
+    say('user', 'Also cap the delay at thirty seconds', { promptSource: 'queued' }),
+    say('assistant', text('capped at 30s')),
+  ];
+  await runHook('redact', FOLLOW_UP, { transcript });
+  const texts = captured[0].state.messages.map((m) => m.text);
+  assert.ok(texts.includes('Also cap the delay at thirty seconds'), 'the queued prompt was dropped');
+  assert.ok(texts.includes('capped at 30s'));
+  assert.ok(!texts.some((t) => t.includes('notice nobody typed')));
+});
+
+/**
+ * Context is clamped to the scorer's size. If the cut came before redaction, a
+ * credential straddling it would leave a fragment no rule recognises. Built
+ * from fragments so no file holds the whole value.
+ */
+const STRADDLE_SECRET = ['Zq8vN2mK', '7xP4wL9r'].join('');
+const STRADDLE_URL = ['redis://svc:', STRADDLE_SECRET, '@cache.internal:6379'].join('');
+
+test('a credential across the clamp point of an earlier prompt is redacted before the cut', async () => {
+  captured.length = 0;
+  // The prompt clamp keeps the first 3,000 characters: put the password across that line.
+  const long = 'Connect with ' + 'x'.repeat(2_980 - 13) + ' ' + STRADDLE_URL + ' ' + 'y'.repeat(3_000);
+  const transcript = [say('user', long), say('assistant', text('connected'))];
+  await runHook('redact', FOLLOW_UP, { transcript });
+  const sent = JSON.stringify(captured[0]);
+  assert.ok(!sent.includes(STRADDLE_SECRET.slice(0, 6)), 'a fragment of the password reached the wire');
+});
+
+test('a credential across the clamp point of a reply is redacted before the cut', async () => {
+  captured.length = 0;
+  // The reply clamp keeps the last 1,498 characters: start the tail inside the password.
+  // A dotless host, so the email rule cannot mask the fragment by accident.
+  const tail = STRADDLE_SECRET.slice(4) + '@cache:6379 is live. ' + 'z'.repeat(1_498 - 33);
+  const reply = 'Using redis://svc:' + STRADDLE_SECRET.slice(0, 4) + tail;
+  const transcript = [
+    say('user', 'Point src/cache.ts at the new redis'),
+    say('assistant', text('w'.repeat(500) + ' ' + reply)),
+  ];
+  await runHook('redact', FOLLOW_UP, { transcript });
+  const sent = JSON.stringify(captured[0]);
+  assert.ok(!sent.includes(STRADDLE_SECRET.slice(4)), 'a fragment of the password reached the wire');
+});
+
 test('narration before any kind of tool call is not sent', async () => {
   captured.length = 0;
   const transcript = [
