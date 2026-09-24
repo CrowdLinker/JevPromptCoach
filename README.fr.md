@@ -235,6 +235,14 @@ Garanties :
 - **Seulement les constats défendables.** Deux vérifications sont exclues de la
   ligne en ligne sur la base des preuves de l'eval, et tout ce qui est proche
   d'un seuil est écarté plutôt qu'affiché.
+- **Pas de 0/100.** Quand aucune vérification décidée ne passe, la notice
+  indique ce qui manque, sans le chiffre.
+
+**Les relances sont lues en contexte.** Le premier prompt d'une session est noté
+seul. Un prompt suivant est envoyé avec les deux prompts qui le précèdent dans la
+même session, et seul le nouveau est noté. Activé par défaut ;
+`JEVPROMPTCOACH_SESSION_CONTEXT=0` le désactive. Les seuils ont été calibrés sur
+des prompts notés seuls.
 
 ## Confidentialité
 
@@ -261,7 +269,7 @@ assigné à un nom finissant par `KEY`/`TOKEN`/`SECRET`/`PASSWORD`.
 | `/jevpromptcoach:score` | Le seul prompt que vous avez passé, expurgé |
 | `/jevpromptcoach:report` | Les prompts journalisés pas encore notés, expurgés, par lots |
 | `config backfill` | Votre historique, expurgé, par lots — **après** une estimation de coût et une confirmation explicite |
-| mode `always` | Chaque prompt au moment où vous l'envoyez, expurgé |
+| mode `always` | Chaque prompt au moment où vous l'envoyez, expurgé, plus jusqu'à deux prompts précédents de la même session comme contexte, expurgés eux aussi |
 | Sinon, jamais | Rien |
 
 Aucune télémétrie. Aucune autre destination réseau. La clé d'API est lue depuis
@@ -269,7 +277,7 @@ l'environnement ou le fichier de clé, et n'est jamais journalisée, affichée, 
 incluse dans un message d'erreur.
 
 Un prompt n'est noté qu'une fois. Les résultats sont mis en cache par empreinte
-du contenu.
+du contenu, sauf pour une relance en mode `always`, dont le contexte change.
 
 ## Contribuer
 

@@ -4,9 +4,6 @@ import {
   skipReason
 } from "./chunk-F3M3WE3B.js";
 import {
-  applyPrivacy
-} from "./chunk-VM4R2HGT.js";
-import {
   appendLogMany,
   appendScores,
   clearLocalData,
@@ -16,7 +13,7 @@ import {
   readLog,
   readScores,
   writeCorrections
-} from "./chunk-RC2GUYJC.js";
+} from "./chunk-U3OSFJLP.js";
 import {
   CHECKS,
   CORRECTION_QUESTION,
@@ -30,7 +27,7 @@ import {
   runPool,
   scoreMany,
   scoreOne
-} from "./chunk-BD4OHVLJ.js";
+} from "./chunk-W564PYU5.js";
 import {
   ENV_PATH,
   LOG_PATH,
@@ -38,7 +35,10 @@ import {
   apiKeySource,
   loadConfig,
   saveConfig
-} from "./chunk-JBKH57J6.js";
+} from "./chunk-7PP552KK.js";
+import {
+  applyPrivacy
+} from "./chunk-VM4R2HGT.js";
 
 // src/cli.ts
 import { readFileSync, writeFileSync } from "node:fs";

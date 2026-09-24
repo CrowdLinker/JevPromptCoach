@@ -78,10 +78,11 @@ async function main(): Promise<void> {
 
   // From here on we are in `always` mode and may call the API. What goes out is
   // `stored` — the text after the configured privacy level has been applied —
-  // never the raw prompt. The budget is hard: whatever has not answered by then
-  // is abandoned and nothing prints.
+  // never the raw prompt; earlier prompts sent as context are re-redacted in
+  // inline.ts for the same reason. The budget is hard: whatever has not
+  // answered by then is abandoned and nothing prints.
   const { runInline } = await import('./inline.js');
-  const line = await runInline(stored, hash, config);
+  const line = await runInline(stored, hash, config, { session: entry.session, ts: entry.ts });
   if (line) emitLine(line);
 }
 

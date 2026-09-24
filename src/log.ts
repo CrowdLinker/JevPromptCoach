@@ -3,7 +3,17 @@
  * live under ~/.claude/jevpromptcoach/. Nothing here ever leaves the machine;
  * the commands read it, and only a command sends anything to the API.
  */
-import { appendFileSync, existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import {
+  appendFileSync,
+  closeSync,
+  existsSync,
+  fstatSync,
+  openSync,
+  readFileSync,
+  readSync,
+  renameSync,
+  writeFileSync,
+} from 'node:fs';
 import type { CheckId, GateId } from './checks.js';
 import { CACHE_PATH, CORRECTIONS_PATH, ensureDataDir, LOG_PATH } from './config.js';
 import type { Features } from './redact.js';
@@ -39,6 +49,12 @@ export interface ScoreRecord {
   /** Raw probability per applicability gate. */
   gates: Partial<Record<GateId, number>>;
   model: string;
+  /**
+   * How many earlier prompts from the session rode along as context. Absent for
+   * a prompt scored on its own. A score that depended on its context is not
+   * served from the cache, because the same text elsewhere had other context.
+   */
+  context?: number;
 }
 
 /** The correction-rate verdict for the prompt with this hash. */
@@ -73,6 +89,42 @@ export function appendLog(entry: LogEntry): void {
 
 export function readLog(): LogEntry[] {
   return readJsonl<LogEntry>(LOG_PATH);
+}
+
+/** Enough for dozens of recent prompts; the log is never read whole on the prompt path. */
+const TAIL_BYTES = 256 * 1024;
+
+/**
+ * The last `limit` hook prompts from `session` logged before `before`, oldest
+ * first. Reads only the tail of the log, so a session whose earlier prompts
+ * have scrolled out of it is treated as having none.
+ */
+export function recentSessionPrompts(session: string, before: string, limit: number): LogEntry[] {
+  if (!existsSync(LOG_PATH)) return [];
+  const fd = openSync(LOG_PATH, 'r');
+  let tail: string;
+  try {
+    const size = fstatSync(fd).size;
+    const length = Math.min(size, TAIL_BYTES);
+    const buffer = Buffer.alloc(length);
+    readSync(fd, buffer, 0, length, size - length);
+    tail = buffer.toString('utf8');
+  } finally {
+    closeSync(fd);
+  }
+
+  const out: LogEntry[] = [];
+  // The first line may be cut mid-way by the tail boundary; it fails to parse and is skipped.
+  for (const line of tail.split('\n')) {
+    if (!line.trim()) continue;
+    try {
+      const entry = JSON.parse(line) as LogEntry;
+      if (entry.source === 'hook' && entry.session === session && entry.ts < before) out.push(entry);
+    } catch {
+      /* torn line */
+    }
+  }
+  return out.slice(-limit);
 }
 
 export function appendLogMany(entries: LogEntry[]): void {
