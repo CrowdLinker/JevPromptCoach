@@ -12,6 +12,7 @@ import { readdirSync, statSync, createReadStream, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { createInterface } from 'node:readline';
+import { stripPreamble } from './hash.js';
 
 export interface HistoryPrompt {
   ts: string;
@@ -22,7 +23,7 @@ export interface HistoryPrompt {
 
 export const PROJECTS_DIR = join(homedir(), '.claude', 'projects');
 
-interface TranscriptRecord {
+export interface TranscriptRecord {
   type?: string;
   message?: { role?: string; content?: unknown };
   timestamp?: string;
@@ -34,7 +35,7 @@ interface TranscriptRecord {
   userType?: string;
 }
 
-function textOf(content: unknown): string {
+export function textOf(content: unknown): string {
   if (typeof content === 'string') return content;
   if (Array.isArray(content)) {
     return content
@@ -53,7 +54,7 @@ function hasToolResult(content: unknown): boolean {
   );
 }
 
-function isHumanPrompt(record: TranscriptRecord): boolean {
+export function isHumanPrompt(record: TranscriptRecord): boolean {
   if (record.type !== 'user') return false;
   if (record.isSidechain || record.isMeta) return false;
   if (hasToolResult(record.message?.content)) return false;
@@ -82,14 +83,6 @@ export function listTranscripts(dir = PROJECTS_DIR): string[] {
     }
   }
   return files;
-}
-
-/** Strip the attachment preamble Claude Code prepends to a prompt with files. */
-function stripPreamble(text: string): string {
-  return text
-    .replace(/^\s*<system_instruction>[\s\S]*?<\/system_instruction>\s*/g, '')
-    .replace(/<ide_selection>[\s\S]*?<\/ide_selection>/g, '')
-    .trim();
 }
 
 async function readTranscript(path: string, out: HistoryPrompt[]): Promise<void> {

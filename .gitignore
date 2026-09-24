@@ -5,7 +5,9 @@ node_modules/
 # Eval fixtures are real prompts from real work. They stay on the machine that
 # made them. See test/fixtures/README.md.
 test/fixtures/prompts.json
+test/fixtures/conversations.json
 test/eval-raw.json
+test/eval-conversations-raw.json
 
 # No lockfile at the plugin root, deliberately.
 #

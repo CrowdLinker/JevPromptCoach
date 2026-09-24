@@ -14,7 +14,7 @@ import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -61,7 +61,11 @@ after(() => server?.close());
  * spawn would block the event loop and the server could never accept the
  * hook's connection.
  */
-function runHook(privacy, prompt = PROMPT, { log = [], scores = [], env = {} } = {}) {
+function runHook(
+  privacy,
+  prompt = PROMPT,
+  { log = [], scores = [], env = {}, transcript = null, transcriptIsDirectory = false } = {},
+) {
   const home = mkdtempSync(join(tmpdir(), 'jpc-test-'));
   mkdirSync(join(home, '.claude', 'jevpromptcoach'), { recursive: true });
   if (log.length) {
@@ -69,6 +73,14 @@ function runHook(privacy, prompt = PROMPT, { log = [], scores = [], env = {} } =
       join(home, '.claude', 'jevpromptcoach', 'prompts.jsonl'),
       log.map((e) => JSON.stringify({ features: {}, source: 'hook', ...e })).join('\n') + '\n',
     );
+  }
+  let transcriptPath;
+  if (transcriptIsDirectory) {
+    transcriptPath = join(home, 'transcript-dir');
+    mkdirSync(transcriptPath);
+  } else if (transcript) {
+    transcriptPath = join(home, 'transcript.jsonl');
+    writeFileSync(transcriptPath, transcript.map((r) => JSON.stringify(r)).join('\n') + '\n');
   }
   if (scores.length) {
     writeFileSync(
@@ -85,6 +97,7 @@ function runHook(privacy, prompt = PROMPT, { log = [], scores = [], env = {} } =
     env: {
       ...process.env,
       JEVPROMPTCOACH_SESSION_CONTEXT: '',
+      JEVPROMPTCOACH_SESSION_REPLIES: '',
       ...env,
       HOME: home,
       TYPESAFE_BASE_URL: `http://127.0.0.1:${port}`,
@@ -94,7 +107,15 @@ function runHook(privacy, prompt = PROMPT, { log = [], scores = [], env = {} } =
   child.stdout.on('data', (c) => {
     stdout += c;
   });
-  child.stdin.end(JSON.stringify({ session_id: 's', cwd: '/tmp/d', hook_event_name: 'UserPromptSubmit', prompt }));
+  child.stdin.end(
+    JSON.stringify({
+      session_id: 's',
+      cwd: '/tmp/d',
+      hook_event_name: 'UserPromptSubmit',
+      prompt,
+      ...(transcriptPath ? { transcript_path: transcriptPath } : {}),
+    }),
+  );
   return new Promise((resolve) => {
     child.on('close', (status) => {
       rmSync(home, { recursive: true, force: true });
@@ -129,7 +150,8 @@ const savedScore = (extra = {}) => ({
 });
 
 /**
- * A follow-up carries the two prompts before it in the same session. They are
+ * With replies turned off, a follow-up carries the two prompts before it in the
+ * same session. They are
  * written to the log as raw text, as if captured under `raw`, so the test also
  * proves they are redacted again on the way out under `redact`.
  */
@@ -140,7 +162,7 @@ const EARLIER = [
   { ts: '2026-01-01T00:03:00.000Z', session: 's', hash: 'h2', text: 'Open /Users/someone/clients/acme/app/main.ts' },
 ];
 
-test('a follow-up sends the two earlier prompts, redacted, and scores only the last', async () => {
+test('without a transcript, a follow-up sends the two earlier prompts, redacted, and scores only the last', async () => {
   captured.length = 0;
   const result = await runHook('redact', FOLLOW_UP, { log: EARLIER });
   assert.equal(result.status, 0);
@@ -227,6 +249,336 @@ test('/jevpromptcoach:score ignores a saved score that depended on context', asy
   assert.ok(!stdout.includes('(cached'), stdout);
 });
 
+/**
+ * An invented Claude Code transcript, in the record shapes the plugin reads.
+ * It holds everything that must never reach the wire from a transcript:
+ * narration before a tool call, tool output, a subagent's text, and a bypassed
+ * exchange whose reply repeats what the bypassed prompt held.
+ */
+const say = (role, content, extra = {}) => ({
+  type: role,
+  message: { role, content },
+  sessionId: 's',
+  timestamp: '2026-01-01T00:00:00.000Z',
+  ...(role === 'user' ? { promptSource: 'typed' } : {}),
+  ...extra,
+});
+const text = (t) => [{ type: 'text', text: t }];
+const TRANSCRIPT = [
+  say('user', 'oldest exchange, outside the window'),
+  say('assistant', text('reply to the oldest exchange')),
+  say('user', `Refactor the retry logic in src/queue/worker.ts and mail bob@acme.com`),
+  say('assistant', text('narration before the tool call')),
+  say('assistant', [{ type: 'tool_use', id: 't1', name: 'Read', input: {} }]),
+  say('user', [{ type: 'tool_result', tool_use_id: 't1', content: 'TOOL OUTPUT BODY' }], { promptSource: undefined }),
+  say('assistant', text('subagent chatter'), { isSidechain: true }),
+  say('assistant', text(`Done, worker.ts backs off now. Deploy key was ${SECRET}. Want me to commit?`)),
+  say('user', '*a bypassed prompt about the private client'),
+  say('assistant', text('reply that repeats the private client')),
+  say('user', 'Yes, and keep the exported constant as it is'),
+  say('assistant', text('Kept it. Anything else before I commit?')),
+];
+const REPLIES_ON = { JEVPROMPTCOACH_SESSION_REPLIES: '1' };
+
+test('with replies on, a follow-up sends the last two exchanges, redacted, and scores only the last', async () => {
+  captured.length = 0;
+  await runHook('redact', FOLLOW_UP, { transcript: TRANSCRIPT, env: REPLIES_ON });
+  assert.equal(captured.length, 1);
+  const { state, questions } = captured[0];
+
+  assert.deepEqual(
+    state.messages.map((m) => m.role),
+    ['developer', 'agent', 'developer', 'agent', 'developer'],
+    'two exchanges, then the prompt being scored',
+  );
+  assert.equal(state.messages.at(-1).id, 'm0');
+  assert.equal(state.messages.at(-1).text, FOLLOW_UP);
+  assert.match(state.messages[1].text, /Want me to commit\?$/);
+
+  const sent = JSON.stringify(captured[0]);
+  for (const never of [
+    'oldest exchange',
+    'narration before the tool call',
+    'TOOL OUTPUT BODY',
+    'subagent chatter',
+    'bypassed prompt',
+    'private client',
+  ]) {
+    assert.ok(!sent.includes(never), `"${never}" reached the wire`);
+  }
+  assert.ok(!sent.includes(SECRET), 'a reply leaked the API key');
+  assert.ok(!sent.includes('bob@acme.com'), 'a prompt in the transcript leaked the email');
+
+  assert.ok(
+    Object.keys(questions).every((k) => k.startsWith('m0__')),
+    'context must not be scored',
+  );
+  assert.match(questions.m0__named_target.instructions, /conversation/);
+});
+
+test('with replies on, the prompt being scored is not repeated when the transcript already has it', async () => {
+  captured.length = 0;
+  const transcript = [...TRANSCRIPT, say('user', FOLLOW_UP)];
+  await runHook('redact', FOLLOW_UP, { transcript, env: REPLIES_ON });
+  const texts = captured[0].state.messages.map((m) => m.text);
+  assert.equal(texts.filter((t) => t === FOLLOW_UP).length, 1);
+  assert.equal(texts.length, 5);
+});
+
+test('with replies on, only conversation checks the eval cleared reach the inline line', async () => {
+  answerFor = () => 0.01;
+  const { systemMessage } = JSON.parse(
+    (await runHook('redact', FOLLOW_UP, { transcript: TRANSCRIPT, env: REPLIES_ON })).stdout,
+  );
+  const missing = systemMessage.split('\n')[1];
+  assert.match(missing, /what must not change/);
+  assert.match(missing, /the verification steps/);
+  // Every check failed on the wire; these did not clear the conversation eval.
+  for (const never of ['which file or function', 'what "done" looks like', 'a single focused requirement']) {
+    assert.ok(!missing.includes(never), `${never} is not inline-eligible in conversation`);
+  }
+});
+
+test('with a transcript, the first prompt of a session is still scored alone', async () => {
+  captured.length = 0;
+  await runHook('redact', FOLLOW_UP, { transcript: [say('user', FOLLOW_UP)] });
+  assert.equal(captured[0].state.messages.length, 1);
+  assert.equal(captured[0].state.messages[0].role, undefined, 'judged by the standalone criteria');
+});
+
+test('narration in the same record as a tool call is not sent', async () => {
+  captured.length = 0;
+  const transcript = [
+    say('user', 'Refactor src/queue/worker.ts to back off exponentially'),
+    say('assistant', [
+      { type: 'text', text: 'narration sharing a record with the call' },
+      { type: 'tool_use', id: 't9', name: 'Read', input: {} },
+    ]),
+    say('assistant', text('final answer about worker.ts')),
+  ];
+  await runHook('redact', FOLLOW_UP, { transcript });
+  const sent = JSON.stringify(captured[0]);
+  assert.ok(!sent.includes('narration sharing a record'), 'narration before the call reached the wire');
+  assert.ok(sent.includes('final answer about worker.ts'));
+});
+
+test('a queued prompt is its own exchange', async () => {
+  captured.length = 0;
+  const transcript = [
+    say('user', 'Refactor src/queue/worker.ts to back off exponentially'),
+    say('assistant', text('first reply')),
+    say('user', 'Also cap the delay at thirty seconds', { promptSource: 'queued' }),
+    say('assistant', text('capped at 30s')),
+  ];
+  await runHook('redact', FOLLOW_UP, { transcript });
+  assert.deepEqual(
+    captured[0].state.messages.map((m) => m.text),
+    [
+      'Refactor src/queue/worker.ts to back off exponentially',
+      'first reply',
+      'Also cap the delay at thirty seconds',
+      'capped at 30s',
+      FOLLOW_UP,
+    ],
+  );
+});
+
+test('a bypassed queued prompt is dropped with its reply, and so is anything queued behind it', async () => {
+  captured.length = 0;
+  const transcript = [
+    say('user', 'Refactor src/queue/worker.ts to back off exponentially'),
+    say('assistant', text('first reply')),
+    say('user', '*queued note about the private client', { promptSource: 'queued' }),
+    say('assistant', text('reply that repeats the private client')),
+    // Queued means the agent is still on the bypassed item; what follows answers it.
+    say('user', 'Also cap the delay at thirty seconds', { promptSource: 'queued' }),
+    say('assistant', text('capped, and the private client is set')),
+  ];
+  await runHook('redact', FOLLOW_UP, { transcript });
+  const { state } = captured[0];
+  assert.ok(!JSON.stringify(state).includes('private client'), 'a bypassed turn reached the wire');
+  assert.deepEqual(
+    state.messages.map((m) => m.text),
+    ['Refactor src/queue/worker.ts to back off exponentially', 'first reply', FOLLOW_UP],
+  );
+});
+
+test("a prompt queued during a bypassed turn does not carry that turn's reply", async () => {
+  captured.length = 0;
+  const transcript = [
+    say('user', '*SECRETPROMPT deploy with the private key'),
+    say('assistant', [{ type: 'tool_use', id: 'a1', name: 'Bash', input: {} }]),
+    say('user', 'also run the tests after', { promptSource: 'queued' }),
+    say('user', [{ type: 'tool_result', tool_use_id: 'a1', content: 'ok' }], { promptSource: undefined }),
+    say('assistant', text('Done, used SECRETPROMPT')),
+  ];
+  await runHook('redact', FOLLOW_UP, { transcript });
+  assert.ok(!JSON.stringify(captured[0]).includes('SECRETPROMPT'), 'the bypassed turn reached the wire');
+});
+
+test('a meta system or SDK message still closes the exchange before it', async () => {
+  captured.length = 0;
+  const transcript = [
+    say('user', 'Refactor src/queue/worker.ts to back off exponentially'),
+    say('assistant', text('the real reply')),
+    say('user', 'a meta notice nobody typed', { promptSource: 'system', isMeta: true }),
+    say('assistant', text('text answering the meta notice')),
+  ];
+  await runHook('redact', FOLLOW_UP, { transcript });
+  const sent = JSON.stringify(captured[0]);
+  assert.ok(sent.includes('the real reply'));
+  assert.ok(!sent.includes('answering the meta notice'), 'text after a meta system message was taken as a reply');
+});
+
+test('a queued prompt after a system message is kept as its own exchange', async () => {
+  captured.length = 0;
+  const transcript = [
+    say('user', 'Refactor src/queue/worker.ts to back off exponentially'),
+    say('assistant', text('first reply')),
+    say('user', 'a notice nobody typed', { promptSource: 'system' }),
+    say('user', 'Also cap the delay at thirty seconds', { promptSource: 'queued' }),
+    say('assistant', text('capped at 30s')),
+  ];
+  await runHook('redact', FOLLOW_UP, { transcript });
+  const texts = captured[0].state.messages.map((m) => m.text);
+  assert.ok(texts.includes('Also cap the delay at thirty seconds'), 'the queued prompt was dropped');
+  assert.ok(texts.includes('capped at 30s'));
+  assert.ok(!texts.some((t) => t.includes('notice nobody typed')));
+});
+
+/**
+ * Context is clamped to the scorer's size. If the cut came before redaction, a
+ * credential straddling it would leave a fragment no rule recognises. Built
+ * from fragments so no file holds the whole value.
+ */
+const STRADDLE_SECRET = ['Zq8vN2mK', '7xP4wL9r'].join('');
+const STRADDLE_URL = ['redis://svc:', STRADDLE_SECRET, '@cache.internal:6379'].join('');
+
+test('a credential across the clamp point of an earlier prompt is redacted before the cut', async () => {
+  captured.length = 0;
+  // The prompt clamp keeps the first 3,000 characters: put the password across that line.
+  const long = 'Connect with ' + 'x'.repeat(2_980 - 13) + ' ' + STRADDLE_URL + ' ' + 'y'.repeat(3_000);
+  const transcript = [say('user', long), say('assistant', text('connected'))];
+  await runHook('redact', FOLLOW_UP, { transcript });
+  const sent = JSON.stringify(captured[0]);
+  assert.ok(!sent.includes(STRADDLE_SECRET.slice(0, 6)), 'a fragment of the password reached the wire');
+});
+
+test('a credential across the clamp point of a reply is redacted before the cut', async () => {
+  captured.length = 0;
+  // The reply clamp keeps the last 1,498 characters: start the tail inside the password.
+  // A dotless host, so the email rule cannot mask the fragment by accident.
+  const tail = STRADDLE_SECRET.slice(4) + '@cache:6379 is live. ' + 'z'.repeat(1_498 - 33);
+  const reply = 'Using redis://svc:' + STRADDLE_SECRET.slice(0, 4) + tail;
+  const transcript = [
+    say('user', 'Point src/cache.ts at the new redis'),
+    say('assistant', text('w'.repeat(500) + ' ' + reply)),
+  ];
+  await runHook('redact', FOLLOW_UP, { transcript });
+  const sent = JSON.stringify(captured[0]);
+  assert.ok(!sent.includes(STRADDLE_SECRET.slice(4)), 'a fragment of the password reached the wire');
+});
+
+test('narration before any kind of tool call is not sent', async () => {
+  captured.length = 0;
+  const transcript = [
+    say('user', 'Search the docs for the retry API in src/queue/worker.ts'),
+    say('assistant', [
+      { type: 'text', text: 'narration before the search' },
+      { type: 'server_tool_use', id: 's1', name: 'web_search', input: {} },
+    ]),
+    say('assistant', text('final answer')),
+  ];
+  await runHook('redact', FOLLOW_UP, { transcript });
+  const sent = JSON.stringify(captured[0]);
+  assert.ok(!sent.includes('narration before the search'));
+  assert.ok(sent.includes('final answer'));
+});
+
+test('an unreadable transcript falls back to the earlier prompts in the log', async () => {
+  captured.length = 0;
+  // A directory where the transcript should be: reading it throws.
+  await runHook('redact', FOLLOW_UP, { log: EARLIER, transcript: [], transcriptIsDirectory: true });
+  const { state } = captured[0];
+  assert.equal(state.messages.length, 3, 'two earlier prompts from the log, then the one being scored');
+  assert.ok(state.messages.every((m) => m.role === undefined));
+});
+
+test('text after a system or SDK message is not taken as a reply to the prompt before it', async () => {
+  captured.length = 0;
+  const transcript = [
+    say('user', 'Refactor src/queue/worker.ts to back off exponentially'),
+    say('assistant', text('the real reply')),
+    say('user', 'a notice nobody typed', { promptSource: 'system' }),
+    say('assistant', text('text answering the notice')),
+    say('user', 'input from an SDK caller', { promptSource: 'sdk' }),
+    say('assistant', text('text answering the SDK caller')),
+  ];
+  await runHook('redact', FOLLOW_UP, { transcript });
+  const sent = JSON.stringify(captured[0]);
+  assert.ok(sent.includes('the real reply'));
+  for (const never of ['notice nobody typed', 'answering the notice', 'SDK caller']) {
+    assert.ok(!sent.includes(never), `"${never}" reached the wire`);
+  }
+});
+
+test('the prompt being scored is recognised even when the transcript splits it into blocks', async () => {
+  captured.length = 0;
+  const prompt = 'Commit the retry change\n\nthen push it to the branch';
+  const transcript = [
+    ...TRANSCRIPT,
+    say('user', [
+      { type: 'text', text: 'Commit the retry change' },
+      { type: 'text', text: 'then push it to the branch' },
+    ]),
+  ];
+  await runHook('redact', prompt, { transcript });
+  const texts = captured[0].state.messages.map((m) => m.text);
+  assert.equal(texts.length, 5, 'two exchanges, then the prompt, with no duplicate');
+  assert.equal(texts.filter((t) => t.startsWith('Commit the retry change')).length, 1);
+});
+
+test('an earlier identical prompt that got a reply stays as context', async () => {
+  captured.length = 0;
+  const transcript = [say('user', FOLLOW_UP), say('assistant', text('pushed to the branch'))];
+  await runHook('redact', FOLLOW_UP, { transcript });
+  assert.deepEqual(
+    captured[0].state.messages.map((m) => m.text),
+    [FOLLOW_UP, 'pushed to the branch', FOLLOW_UP],
+  );
+});
+
+test('replies are on by default', async () => {
+  captured.length = 0;
+  await runHook('redact', FOLLOW_UP, { transcript: TRANSCRIPT });
+  assert.deepEqual(
+    captured[0].state.messages.map((m) => m.role),
+    ['developer', 'agent', 'developer', 'agent', 'developer'],
+  );
+});
+
+test('JEVPROMPTCOACH_SESSION_REPLIES=0 leaves the replies out and sends earlier prompts only', async () => {
+  captured.length = 0;
+  await runHook('redact', FOLLOW_UP, {
+    transcript: TRANSCRIPT,
+    log: EARLIER,
+    env: { JEVPROMPTCOACH_SESSION_REPLIES: '0' },
+  });
+  const { state } = captured[0];
+  assert.ok(
+    state.messages.every((m) => m.role === undefined),
+    'no agent reply when turned off',
+  );
+  assert.ok(!JSON.stringify(state).includes('Want me to commit'));
+  assert.equal(state.messages.length, 3, 'two earlier prompts from the log, then the one being scored');
+});
+
+test('with replies on, metadata_only still sends nothing', async () => {
+  captured.length = 0;
+  await runHook('metadata_only', FOLLOW_UP, { transcript: TRANSCRIPT, env: REPLIES_ON });
+  assert.equal(captured.length, 0);
+});
+
 test('a score of 0 is not shown, only what is missing', async () => {
   answerFor = () => 0.01;
   const { systemMessage } = JSON.parse((await runHook('redact')).stdout);
@@ -242,6 +594,43 @@ test('a score above 0 is shown', async () => {
   } finally {
     answerFor = () => 0.01;
   }
+});
+
+test('conversation fixtures hold what the scorer sees, redacted then clamped', async () => {
+  const home = mkdtempSync(join(tmpdir(), 'jpc-test-'));
+  const project = join(home, '.claude', 'projects', 'demo');
+  mkdirSync(project, { recursive: true });
+  mkdirSync(join(home, '.claude', 'jevpromptcoach'), { recursive: true });
+  const long = 'Connect with ' + 'x'.repeat(2_967) + ' ' + STRADDLE_URL + ' ' + 'y'.repeat(6_000);
+  const transcript = [
+    say('user', long),
+    say('assistant', text('w'.repeat(3_000) + ' connected, want me to commit?')),
+    say('user', 'Yes please, commit and push it'),
+    say('assistant', text('pushed')),
+  ];
+  writeFileSync(join(project, 's.jsonl'), transcript.map((r) => JSON.stringify(r)).join('\n') + '\n');
+  const out = join(home, 'conversations.json');
+  await new Promise((resolve) => {
+    const child = spawn(
+      process.execPath,
+      ['dist/cli.js', 'fixtures-init', '--conversations', '--count=1', `--out=${out}`],
+      {
+        env: { ...process.env, HOME: home },
+        stdio: 'ignore',
+      },
+    );
+    child.on('close', resolve);
+  });
+  const [fixture] = JSON.parse(readFileSync(out, 'utf8'));
+  rmSync(home, { recursive: true, force: true });
+  const [prompt, reply] = fixture.context;
+  // clampPrompt keeps 3,000 characters, a three-character marker, then 1,000.
+  assert.ok(prompt.text.length <= 4_003, `prompt turn is ${prompt.text.length} characters, more than the scorer sends`);
+  assert.ok(reply.text.length <= 1_500, `reply turn is ${reply.text.length} characters`);
+  assert.ok(
+    !JSON.stringify(fixture).includes(STRADDLE_SECRET.slice(0, 6)),
+    'a fragment of the password is in the fixture',
+  );
 });
 
 test('metadata_only sends nothing at all', async () => {

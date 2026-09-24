@@ -41,6 +41,18 @@ easy to break with a change that looks reasonable.
   test asserts it on the wire.
 - **`metadata_only` means no text leaves the machine.** Any new code path that
   sends text must check for it.
+- **Claude's replies are filtered in `src/conversation.ts`.** Only the closing
+  visible text of a turn is read; tool calls, tool output, thinking and
+  subagent records never leave that module, and an exchange whose prompt was
+  bypassed with `*` is dropped with its reply. Replies are on by default and go
+  through `applyPrivacy` like prompts; `JEVPROMPTCOACH_SESSION_REPLIES=0` turns
+  them off. The wire tests cover each filter.
+- **Conversation checks are calibrated separately.** Each check's
+  `conversation` block in `src/checks.ts` has its own threshold and inline
+  eligibility, set from `npm run eval -- --conversations` on the gitignored
+  `test/fixtures/conversations.json`. Only constraints and verification are
+  inline-eligible so far; the labels behind them were set by the agent, not a
+  person, and the set is 40 follow-ups, so treat them as provisional.
 - **`dist/` is committed and must match `src/`.** Claude Code installs with
   `--ignore-scripts`, so nothing is ever built at install time. Run
   `npm run build` after any source change; CI fails if it drifts.

@@ -292,15 +292,31 @@ Guarantees:
   confidence, often three or four of them, so a 0 said less than it looked. When
   none of those pass, the notice shows what is missing and leaves the number off.
 
-**Follow-ups are read in context.** The first prompt of a session is scored on
-its own, because it has to carry everything the agent needs. A later prompt is
-sent with the two prompts before it in the same session, and only the new one
-is scored: "commit and push all changes" is a fine follow-up once the earlier
-prompt said what the change was. This is on by default. Set
-`JEVPROMPTCOACH_SESSION_CONTEXT=0`, in your environment or in
-`~/.claude/jevpromptcoach/.env`, to score every prompt alone. The thresholds
-were tuned on prompts scored alone; follow-up scores have not yet been through
-the eval.
+**Follow-ups are read in conversation.** "Yes, commit it" can only be judged
+against what Claude offered. The first prompt of a session is scored on its
+own, because it has to carry everything the agent needs. A later prompt is sent
+with the conversation before it, up to the last two exchanges: your prompt and
+the closing text of Claude's reply, twice, then the new prompt, with whatever
+is available earlier in a session. Only the new prompt is scored, and each
+check is asked in its conversation form, which gives credit for what the
+conversation already settled, such as accepting a change Claude described in a
+named file.
+
+Only Claude's visible closing text is read, never tool calls, tool output or
+subagent work, and an exchange whose prompt was bypassed with `*` is dropped
+along with its reply. Replies go through the same redaction as your prompts.
+Both are on by default: `JEVPROMPTCOACH_SESSION_REPLIES=0` leaves Claude's
+replies out and sends only your earlier prompts, and
+`JEVPROMPTCOACH_SESSION_CONTEXT=0` scores every prompt alone. Either goes in
+your environment or in `~/.claude/jevpromptcoach/.env`.
+
+Measured on 40 labelled follow-ups (see
+[test/fixtures/README.md](test/fixtures/README.md)), Claude's replies make
+"which file or function" rank noticeably better than judging the follow-up
+alone, and leave the other checks level; your earlier prompts on their own add
+nothing measurable. Only two conversation checks are steady enough to show
+inline so far, what must not change and the verification steps; the rest are
+recorded for the report and stay off the line.
 
 `always` does not use the mechanism the docs suggest. Writing to stderr with a
 non-zero exit displays nothing on Claude Code 2.1.277; a top-level
@@ -324,9 +340,22 @@ your machine except during a command you ran.
 | `raw` | Prompt text as written. Credential-shaped strings are **still** stripped. |
 
 Stripped at every level, including `raw`: `sk-`, `sk-ant-`, `sk-proj-`, `ghp_`
-and friends, `AKIA`/`ASIA`, `AIza`, Slack `xox*`, JWTs, PEM blocks, Azure client
-secrets, `Bearer` tokens, and anything assigned to a name ending in
-`KEY`/`TOKEN`/`SECRET`/`PASSWORD`.
+and friends, `github_pat_`, `AKIA`/`ASIA`, `AIza`, Slack `xox*`, Stripe
+`sk_live_`/`rk_live_`, `npm_`, SendGrid `SG.`, Slack and Discord webhook URLs,
+JWTs, PEM blocks, Azure client secrets and SAS signatures, `Bearer` tokens, the
+password in any `scheme://user:password@host` URL, anything labelled `password`
+(JSON keys and "password is …" included), and anything assigned to a name
+ending in `KEY`/`TOKEN`/`SECRET`/`PASSWORD` or `_PASS`/`_PWD`/`_AUTH`. With no
+prefix and no label, two shapes still go: any run of 16 or more hex characters
+becomes `[HEX]` (commit SHAs too; the marker keeps the fact that an identifier
+was named), and a random-looking token of 20 or more characters becomes
+`[KEY]`.
+
+Redaction works by shape, and that has a limit: a secret that is neither hex
+nor random-looking and carries no label, such as a word-like password on its
+own, is not removed. That applies to your prompts and to Claude's replies
+alike; set `JEVPROMPTCOACH_SESSION_REPLIES=0` if you would rather replies never
+leave the machine.
 
 **Exactly what is sent, and when:**
 
@@ -335,7 +364,7 @@ secrets, `Bearer` tokens, and anything assigned to a name ending in
 | `/jevpromptcoach:score` | The one prompt you passed, redacted |
 | `/jevpromptcoach:report` | Any logged prompts not yet scored, redacted, batched |
 | `config backfill` | Your history, redacted, batched — **after** a cost estimate and an explicit confirmation |
-| `always` mode | Each prompt as you submit it, redacted, plus up to two earlier prompts from the same session as context, redacted again at the current level |
+| `always` mode | Each prompt as you submit it, redacted, plus the conversation before it as context: up to the last two exchanges, your prompts and the closing text of Claude's replies, redacted again at the current level. `JEVPROMPTCOACH_SESSION_REPLIES=0` drops the replies; `JEVPROMPTCOACH_SESSION_CONTEXT=0` drops the context |
 | Ever, otherwise | Nothing |
 
 No telemetry. No other network destination. The API key is read from the

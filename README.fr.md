@@ -244,6 +244,15 @@ même session, et seul le nouveau est noté. Activé par défaut ;
 `JEVPROMPTCOACH_SESSION_CONTEXT=0` le désactive. Les seuils ont été calibrés sur
 des prompts notés seuls.
 
+**Les réponses de Claude aussi.** Une relance est envoyée avec les deux derniers
+échanges (vos prompts et le texte final des réponses de Claude, jamais les outils
+ni leurs sorties), et chaque vérification est posée dans sa forme
+conversationnelle. Un échange contourné par `*` est retiré avec sa réponse. Les
+réponses passent par le même expurgeage que vos prompts. Activé par défaut ;
+`JEVPROMPTCOACH_SESSION_REPLIES=0` n'envoie que vos prompts précédents. Pour l'instant, seules deux
+vérifications conversationnelles s'affichent en ligne : ce qui ne doit pas changer
+et les étapes de vérification.
+
 ## Confidentialité
 
 Les prompts contiennent du code, des chemins, et parfois des secrets.
@@ -258,9 +267,17 @@ quitte votre machine en dehors d'une commande que vous avez lancée.
 | `raw` | Le texte tel qu'écrit. Les chaînes en forme d'identifiant sont **quand même** retirées. |
 
 Retiré à tous les niveaux, y compris `raw` : `sk-`, `sk-ant-`, `sk-proj-`,
-`ghp_` et apparentés, `AKIA`/`ASIA`, `AIza`, les `xox*` de Slack, les JWT, les
-blocs PEM, les secrets clients Azure, les jetons `Bearer`, et tout ce qui est
-assigné à un nom finissant par `KEY`/`TOKEN`/`SECRET`/`PASSWORD`.
+`ghp_` et apparentés, `github_pat_`, `AKIA`/`ASIA`, `AIza`, les `xox*` de Slack,
+Stripe `sk_live_`/`rk_live_`, `npm_`, SendGrid `SG.`, les URL de webhook Slack et
+Discord, les JWT, les blocs PEM, les secrets clients et signatures SAS Azure, les
+jetons `Bearer`, le mot de passe de toute URL `schéma://utilisateur:motdepasse@hôte`,
+tout ce qui est étiqueté `password`, et tout ce qui est assigné à un nom
+finissant par `KEY`/`TOKEN`/`SECRET`/`PASSWORD` ou `_PASS`/`_PWD`/`_AUTH`. Sans
+préfixe ni étiquette, deux formes partent quand même : toute suite de 16
+caractères hexadécimaux ou plus devient `[HEX]`, et un jeton d'apparence
+aléatoire de 20 caractères ou plus devient `[KEY]`. Seul un secret qui n'est ni
+hexadécimal ni aléatoire et sans étiquette, comme un mot de passe en forme de
+mot, n'est pas retiré.
 
 **Ce qui est envoyé, et quand :**
 
@@ -270,6 +287,7 @@ assigné à un nom finissant par `KEY`/`TOKEN`/`SECRET`/`PASSWORD`.
 | `/jevpromptcoach:report` | Les prompts journalisés pas encore notés, expurgés, par lots |
 | `config backfill` | Votre historique, expurgé, par lots — **après** une estimation de coût et une confirmation explicite |
 | mode `always` | Chaque prompt au moment où vous l'envoyez, expurgé, plus jusqu'à deux prompts précédents de la même session comme contexte, expurgés eux aussi |
+| mode `always`, réponses de Claude | Par défaut, le contexte est les deux derniers échanges : vos prompts et le texte final des réponses de Claude, expurgés. `JEVPROMPTCOACH_SESSION_REPLIES=0` retire les réponses |
 | Sinon, jamais | Rien |
 
 Aucune télémétrie. Aucune autre destination réseau. La clé d'API est lue depuis

@@ -15,7 +15,7 @@ prompt text in them.
 ```
 npm run build
 node dist/cli.js fixtures-init          # 40 prompts from your history, unlabelled
-node dist/cli.js fixtures-init --count 60 --out test/fixtures/prompts.json
+node dist/cli.js fixtures-init --count=60 --out=test/fixtures/prompts.json
 ```
 
 It reads `~/.claude/projects/**`, applies the same skip rules the plugin uses,
@@ -60,3 +60,54 @@ before merging.
 way to see the format is to run it and open the result. Each entry carries an
 id, the prompt verbatim, a label per check, and the two applicability gates.
 `src/eval.ts` reads it and `src/checks.ts` names every field.
+
+## Conversation fixtures
+
+A follow-up such as "yes, commit it" can only be judged against what came
+before it. When `always` mode sends the agent's replies, which it does unless
+`JEVPROMPTCOACH_SESSION_REPLIES=0`, each check is asked in its conversation
+form instead, and those forms have their own thresholds. They are measured on a
+second fixture set, built the same way and kept off the repository for the same
+reasons, with one more: it also holds the agent's replies, which quote code and
+client detail back.
+
+```
+node dist/cli.js fixtures-init --conversations
+```
+
+That writes `conversations.json`: 40 follow-ups from your history, each with the
+exchanges before it (your prompt and the agent's closing reply, at most two
+exchanges), every label `null`. Only follow-ups whose previous turn ended with
+the agent saying something are picked, since that reply is what the set exists
+to measure. Everything is redacted at your privacy level, so the eval later
+sends exactly what `always` mode would.
+
+**Label the last message only, read together with its context**, from the
+`conversation` criteria in `src/checks.ts`, not the standalone ones:
+
+- A habit is present if the follow-up supplies it, or if the shown context
+  already established it and the follow-up relies on it: accepting the agent's
+  proposal, answering its question, or pointing unambiguously at something
+  named earlier ("the email one").
+- Only what is shown counts. If you remember the session and know more than the
+  context holds, label from the context; Jev only ever sees that much.
+- The gates describe the follow-up's request in its context, and the two
+  conditional checks follow them exactly as in the standalone set.
+
+Then:
+
+```
+npm run eval -- --conversations
+npm run eval -- --conversations --tune
+```
+
+The eval refuses a file with unlabelled entries, so the order cannot be got
+wrong by accident. Results go to `test/eval-conversations-results.txt` and
+`.json`, beside the standalone ones, and like them hold no prompt text. A
+conversation check reaches the inline line only by the same rule as a
+standalone one: cross-validated fail-precision of at least 0.90 over at least
+ten failing examples.
+
+Forty is enough to measure the common failures and thin for the rare ones. A
+check needs at least five failing examples to be measured at all and ten to be
+allowed inline; if one falls short, `--count=60` gives it more to work with.

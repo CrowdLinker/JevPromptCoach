@@ -2,7 +2,10 @@
  * Eval harness. `npm run eval`.
  *
  * Runs the real scoring path over test/fixtures/prompts.json and compares
- * against hand labels.
+ * against hand labels. With `--conversations` it runs over
+ * test/fixtures/conversations.json instead: follow-ups judged together with the
+ * conversation before them, against each check's conversation criteria and
+ * thresholds, with results written beside the standalone ones.
  *
  * The headline metric is fail-precision: of the prompts where the plugin says
  * a habit is MISSING, how many really were. That is the number that matters,
@@ -11,15 +14,19 @@
  * reported too, but it is not what gates the inline line.
  */
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
-import { CHECKS, type CheckId, GATES } from './checks.js';
-import { apiKey } from './config.js';
+import { type CheckDef, CHECKS, type CheckId, GATES } from './checks.js';
+import { apiKey, loadConfig } from './config.js';
+import type { Turn } from './conversation.js';
 import { MODEL, USD_PER_INPUT_TOKEN } from './jev.js';
 import type { ScoreRecord } from './log.js';
+import { applyPrivacy } from './redact.js';
 import { scoreMany } from './score.js';
 
 interface Fixture {
   id: string;
   text: string;
+  /** Conversation fixtures only: what came before `text`. */
+  context?: Turn[];
   labels: Record<CheckId, boolean | null>;
   gates: Record<string, boolean>;
 }
@@ -62,11 +69,30 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  const fixtures = JSON.parse(readFileSync('test/fixtures/prompts.json', 'utf8')) as Fixture[];
+  const conversations = process.argv.includes('--conversations');
+  const fixturePath = conversations ? 'test/fixtures/conversations.json' : 'test/fixtures/prompts.json';
+  const cachePath = conversations ? 'test/eval-conversations-raw.json' : 'test/eval-raw.json';
+  const resultsPath = conversations ? 'test/eval-conversations-results' : 'test/eval-results';
+  const thresholdOf = (def: CheckDef): number => (conversations ? def.conversation.threshold : def.threshold);
+
+  const fixtures = JSON.parse(readFileSync(fixturePath, 'utf8')) as Fixture[];
+  const unlabelled = fixtures.filter((f) => Object.values(f.labels).every((v) => v === null));
+  if (unlabelled.length > 0) {
+    process.stderr.write(
+      `${unlabelled.length} fixtures in ${fixturePath} have no labels. Label them by hand first; see test/fixtures/README.md.\n`,
+    );
+    process.exit(1);
+  }
+
+  // The eval sends what the plugin would send: every text through the
+  // configured privacy level, as `always` mode and the commands do. Under
+  // metadata_only nothing is ever scored, so the eval uses `redact` instead.
+  const { privacy } = loadConfig();
+  const redact = (text: string): string =>
+    applyPrivacy(text, privacy === 'metadata_only' ? 'redact' : privacy).text ?? '';
 
   let inputTokens = 0;
   let records: ScoreRecord[];
-  const cachePath = 'test/eval-raw.json';
   if (process.argv.includes('--cached') && existsSync(cachePath)) {
     const cached = JSON.parse(readFileSync(cachePath, 'utf8')) as { inputTokens: number; records: ScoreRecord[] };
     records = cached.records;
@@ -75,7 +101,11 @@ async function main(): Promise<void> {
   } else {
     process.stderr.write(`Scoring ${fixtures.length} fixtures…\n`);
     records = await scoreMany(
-      fixtures.map((f) => ({ hash: f.id, text: f.text })),
+      fixtures.map((f) => ({
+        hash: f.id,
+        text: redact(f.text),
+        ...(f.context ? { conversation: f.context.map((t) => ({ role: t.role, text: redact(t.text) })) } : {}),
+      })),
       {
         onUsage: (u) => {
           inputTokens += u.input_tokens;
@@ -127,7 +157,7 @@ async function main(): Promise<void> {
       const record = byId.get(fixture.id);
       const p = record?.probabilities[def.id];
       if (p === undefined) continue;
-      rows.push({ truth, predicted: p >= def.threshold });
+      rows.push({ truth, predicted: p >= thresholdOf(def) });
       raw.push({ truth, p });
     }
 
@@ -137,7 +167,7 @@ async function main(): Promise<void> {
     );
     const pass = metricsFor(rows, true);
 
-    let best = def.threshold;
+    let best = thresholdOf(def);
     if (tune) {
       let bestScore = -1;
       for (let t = 0.05; t <= 0.95; t += 0.05) {
@@ -160,17 +190,19 @@ async function main(): Promise<void> {
     const clears = measurable && fail.precision! >= TARGET_PRECISION;
     if (measurable && !clears) allClear = false;
     const verdict = !measurable
-      ? `too few fail cases (n=${fail.support}) — not measurable`
+      ? fail.support < MIN_SUPPORT
+        ? `too few fail cases (n=${fail.support}) — not measurable`
+        : 'never predicts fail at this threshold — not measurable'
       : clears
         ? 'ok'
         : `BELOW ${TARGET_PRECISION}`;
 
     lines.push(
-      `  ${def.id.padEnd(20)} ${def.threshold.toFixed(2)} |  ${fmt(fail.precision)}  ${fmt(fail.recall)} ${String(fail.support).padStart(2)} |  ${fmt(pass.precision)}  ${fmt(pass.recall)} ${String(pass.support).padStart(2)} | ${verdict}${tune ? `  (best thr ${best})` : ''}`,
+      `  ${def.id.padEnd(20)} ${thresholdOf(def).toFixed(2)} |  ${fmt(fail.precision)}  ${fmt(fail.recall)} ${String(fail.support).padStart(2)} |  ${fmt(pass.precision)}  ${fmt(pass.recall)} ${String(pass.support).padStart(2)} | ${verdict}${tune ? `  (best thr ${best})` : ''}`,
     );
 
     results[def.id] = {
-      threshold: def.threshold,
+      threshold: thresholdOf(def),
       fail: { precision: fail.precision, recall: fail.recall, support: fail.support },
       pass: { precision: pass.precision, recall: pass.recall, support: pass.support },
       measurable,
@@ -197,7 +229,7 @@ async function main(): Promise<void> {
     for (let fold = 0; fold < 5; fold += 1) {
       const test = labelled.filter((_, i) => i % 5 === fold);
       const train = labelled.filter((_, i) => i % 5 !== fold);
-      let thr = def.threshold;
+      let thr = thresholdOf(def);
       let bestScore = -1;
       for (let t = 0.05; t <= 0.95; t += 0.05) {
         const m = metricsFor(
@@ -231,12 +263,13 @@ async function main(): Promise<void> {
   process.stdout.write(report + '\n');
 
   writeFileSync(
-    'test/eval-results.json',
+    `${resultsPath}.json`,
     JSON.stringify(
       {
         ranAt: new Date().toISOString(),
         model: MODEL,
         fixtures: fixtures.length,
+        ...(conversations ? { set: 'conversations' } : {}),
         inputTokens,
         targetPrecision: TARGET_PRECISION,
         checks: results,
@@ -245,7 +278,7 @@ async function main(): Promise<void> {
       2,
     ) + '\n',
   );
-  writeFileSync('test/eval-results.txt', report + '\n');
+  writeFileSync(`${resultsPath}.txt`, report + '\n');
   process.exit(allClear ? 0 : 1);
 }
 

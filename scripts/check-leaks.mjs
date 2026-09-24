@@ -26,6 +26,11 @@ const FORBIDDEN_PATHS = [
   { re: /(^|\/)\.env(\.|$)/, why: 'environment file — may hold a TypeSafe API key' },
   { re: /^test\/fixtures\/prompts\.json$/, why: 'eval fixtures — real prompts from real work' },
   { re: /^test\/eval-raw\.json$/, why: 'raw eval output — derived from private fixtures' },
+  {
+    re: /^test\/fixtures\/conversations\.json$/,
+    why: 'conversation fixtures — real prompts and agent replies from real work',
+  },
+  { re: /^test\/eval-conversations-raw\.json$/, why: 'raw eval output — derived from private fixtures' },
   { re: /\.jsonl$/, why: 'JSONL log — the prompt log is exactly this shape' },
   { re: /(^|\/)corrections\.json$/, why: 'correction records — derived from prompt pairs' },
   { re: /(^|\/)prompts\.jsonl$/, why: 'the local prompt log' },
@@ -42,6 +47,14 @@ const SECRETS = [
   { name: 'AWS access key id', re: /\b(?:AKIA|ASIA)[A-Z0-9]{16}\b/ },
   { name: 'Google API key', re: /\bAIza[A-Za-z0-9_-]{30,}/ },
   { name: 'Slack token', re: /\bxox[abprs]-[A-Za-z0-9-]{16,}/ },
+  {
+    name: 'Slack or Discord webhook',
+    re: /https:\/\/(?:hooks\.slack\.com\/services|discord(?:app)?\.com\/api\/webhooks)\/\S{16,}/,
+  },
+  { name: 'Stripe key', re: /\b[sr]k_(?:live|test)_[A-Za-z0-9]{16,}/ },
+  { name: 'npm token', re: /\bnpm_[A-Za-z0-9]{30,}/ },
+  { name: 'GitHub fine-grained token', re: /\bgithub_pat_[A-Za-z0-9_]{22,}/ },
+  { name: 'SendGrid key', re: /\bSG\.[A-Za-z0-9_-]{16,}\.[A-Za-z0-9_-]{16,}/ },
   { name: 'TypeSafe API key', re: /\bapikey_[A-Za-z0-9]{16,}/ },
   { name: 'private key block', re: /-----BEGIN (?:[A-Z ]+ )?PRIVATE KEY-----/ },
   { name: 'JSON Web Token', re: /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/ },
@@ -147,7 +160,13 @@ for (const path of trackedFiles()) {
 }
 
 // The ignore rules are themselves part of the guarantee, so verify they hold.
-for (const mustIgnore of ['test/fixtures/prompts.json', 'test/eval-raw.json', '.env']) {
+for (const mustIgnore of [
+  'test/fixtures/prompts.json',
+  'test/fixtures/conversations.json',
+  'test/eval-raw.json',
+  'test/eval-conversations-raw.json',
+  '.env',
+]) {
   try {
     git(['check-ignore', '-q', mustIgnore]);
   } catch {

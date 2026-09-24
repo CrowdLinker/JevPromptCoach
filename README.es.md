@@ -235,6 +235,16 @@ misma sesión, y solo se puntúa el nuevo. Activado por defecto;
 `JEVPROMPTCOACH_SESSION_CONTEXT=0` lo desactiva. Los umbrales se calibraron con
 prompts puntuados solos.
 
+**También las respuestas de Claude.** Un seguimiento se envía con los dos últimos
+intercambios (tus prompts y el texto final de las respuestas de Claude, nunca las
+herramientas ni su salida), y cada comprobación se hace en su forma
+conversacional. Un intercambio saltado con `*` se descarta junto con su
+respuesta. Las respuestas pasan por la misma depuración que tus prompts.
+Activado por defecto; `JEVPROMPTCOACH_SESSION_REPLIES=0` envía solo tus prompts
+anteriores. Por ahora solo dos
+comprobaciones conversacionales se muestran en línea: lo que no debe cambiar y
+los pasos de verificación.
+
 ## Privacidad
 
 Los prompts contienen código, rutas y a veces secretos.
@@ -249,9 +259,16 @@ de tu máquina salvo durante un comando que tú hayas ejecutado.
 | `raw` | El texto tal cual. Las cadenas con forma de credencial se eliminan **igualmente**. |
 
 Se eliminan en todos los niveles, incluido `raw`: `sk-`, `sk-ant-`, `sk-proj-`,
-`ghp_` y similares, `AKIA`/`ASIA`, `AIza`, los `xox*` de Slack, JWT, bloques
-PEM, secretos de cliente de Azure, tokens `Bearer`, y cualquier cosa asignada a
-un nombre que acabe en `KEY`/`TOKEN`/`SECRET`/`PASSWORD`.
+`ghp_` y similares, `github_pat_`, `AKIA`/`ASIA`, `AIza`, los `xox*` de Slack,
+Stripe `sk_live_`/`rk_live_`, `npm_`, SendGrid `SG.`, URL de webhooks de Slack y
+Discord, JWT, bloques PEM, secretos de cliente y firmas SAS de Azure, tokens
+`Bearer`, la contraseña de cualquier URL `esquema://usuario:contraseña@host`,
+todo lo etiquetado como `password`, y cualquier cosa asignada a un nombre que
+acabe en `KEY`/`TOKEN`/`SECRET`/`PASSWORD` o `_PASS`/`_PWD`/`_AUTH`. Sin prefijo
+ni etiqueta, dos formas se eliminan igualmente: cualquier secuencia de 16 o más
+caracteres hexadecimales pasa a `[HEX]`, y un token de aspecto aleatorio de 20 o
+más caracteres pasa a `[KEY]`. Solo un secreto que no es hexadecimal ni aleatorio
+y no lleva etiqueta, como una contraseña con forma de palabra, no se elimina.
 
 **Qué se envía exactamente, y cuándo:**
 
@@ -261,6 +278,7 @@ un nombre que acabe en `KEY`/`TOKEN`/`SECRET`/`PASSWORD`.
 | `/jevpromptcoach:report` | Los prompts registrados sin puntuar, depurados, por lotes |
 | `config backfill` | Tu historial, depurado, por lotes — **después** de una estimación de coste y una confirmación explícita |
 | modo `always` | Cada prompt al enviarlo, depurado, más hasta dos prompts anteriores de la misma sesión como contexto, también depurados |
+| modo `always`, respuestas de Claude | Por defecto, el contexto son los dos últimos intercambios: tus prompts y el texto final de las respuestas de Claude, depurados. `JEVPROMPTCOACH_SESSION_REPLIES=0` quita las respuestas |
 | En cualquier otro momento | Nada |
 
 Sin telemetría. Sin ningún otro destino de red. La clave de API se lee del

@@ -24,6 +24,32 @@ const CREDENTIAL_RULES: Rule[] = [
   { name: 'aws', pattern: /\b(?:AKIA|ASIA)[A-Z0-9]{16}\b/g, replace: '[KEY]' },
   { name: 'google', pattern: /\bAIza[A-Za-z0-9_-]{30,}/g, replace: '[KEY]' },
   { name: 'slack', pattern: /\bxox[abprs]-[A-Za-z0-9-]{10,}/g, replace: '[KEY]' },
+  { name: 'stripe', pattern: /\b[sr]k_(?:live|test)_[A-Za-z0-9]{16,}/g, replace: '[KEY]' },
+  { name: 'npm', pattern: /\bnpm_[A-Za-z0-9]{30,}/g, replace: '[KEY]' },
+  { name: 'github-fine-grained', pattern: /\bgithub_pat_[A-Za-z0-9_]{22,}/g, replace: '[KEY]' },
+  { name: 'sendgrid', pattern: /\bSG\.[A-Za-z0-9_-]{16,}\.[A-Za-z0-9_-]{16,}/g, replace: '[KEY]' },
+  {
+    name: 'webhook-url',
+    // The URL is the credential: anyone holding it can post to the channel.
+    pattern: /https:\/\/(?:hooks\.slack\.com\/services|discord(?:app)?\.com\/api\/webhooks)\/[^\s'"`)\]]+/g,
+    replace: '[WEBHOOK]',
+  },
+  {
+    name: 'url-credentials',
+    // scheme://user:password@host. Agent replies quote connection strings
+    // back from .env files and config; the user and host are kept, the
+    // password is not. Runs before the email rule, which would otherwise
+    // swallow "password@host" by accident and leave the next one in place.
+    // The user may be empty (redis://:pw@host), and the password may hold '@'
+    // or '/': it runs greedily to the last '@' in the token that a host
+    // follows. That can take a path with an '@' in it along with the password;
+    // masking too much is the safe way round. A port followed by a path
+    // (host:8080/@handle) is not a password.
+    pattern:
+      /\b([a-z][a-z0-9+.-]{0,30}:\/\/[^\s:/@'"`]{0,256}:)(?!\d{1,5}(?:\/|$))[^\s'"`]{1,256}@(?=[^\s@/'"`]{1,256}(?:[\s/'"`:?#]|$))/gi,
+    replace: '$1[REDACTED]@',
+  },
+  { name: 'azure-sas', pattern: /([?&]sig=)[A-Za-z0-9%+/=]{16,}/g, replace: '$1[REDACTED]' },
   { name: 'jwt', pattern: /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/g, replace: '[JWT]' },
   { name: 'bearer', pattern: /\b[Bb]earer\s+[A-Za-z0-9._-]{12,}/g, replace: 'Bearer [KEY]' },
   {
@@ -31,7 +57,8 @@ const CREDENTIAL_RULES: Rule[] = [
     // Azure client secrets carry a '~' mid-token, which is vanishingly rare in
     // prose, code identifiers and paths. Found in real local history, where it
     // was written as "value - <secret>" and matched no labelled rule below.
-    pattern: /(?<![\w~/])[A-Za-z0-9_.-]{4,}~[A-Za-z0-9_.~-]{12,}(?![\w])/g,
+    // Bounded: unbounded runs made a long line of dots or dashes quadratic.
+    pattern: /(?<![\w~/])[A-Za-z0-9_.-]{4,128}~[A-Za-z0-9_.~-]{12,256}(?![\w])/g,
     replace: '[KEY]',
   },
   {
@@ -40,21 +67,79 @@ const CREDENTIAL_RULES: Rule[] = [
     // The separator must be ':', '=' or a spaced hyphen, and the value may not
     // contain '/', so a path like secret-client/app/main.ts is not a match.
     pattern:
-      /\b(value|secret|password|passwd|token|api[ _-]?key|client[ _-]?secret)\b\s*(?::|=|-\s)\s*(['"`]?)([^\s'"`,;/\\]{12,})\2/gi,
-    replace: (m: string) => m.replace(/((?::|=|-\s)\s*['"`]?)([^\s'"`,;/\\]{12,})/, '$1[REDACTED]'),
+      /\b(value|secret|password|passwd|token|api[ _-]?key|client[ _-]?secret)\b['"]?\s*(?::|=|-\s|is\s)\s*(['"`]?)([^\s'"`,;/\\]{12,})\2/gi,
+    replace: (m: string) => m.replace(/((?::|=|-\s|\bis\s)\s*['"`]?)([^\s'"`,;/\\]{12,})/i, '$1[REDACTED]'),
+  },
+  {
+    name: 'labelled-password',
+    // Passwords are short more often than keys are, so the length floor is
+    // lower than for the generic labels above; the label itself is specific.
+    // The optional quote after the label covers a JSON key: "password": "x".
+    // Prose counts too: "the password is x" was found in real history.
+    pattern: /\b(password|passwd|pwd)\b['"]?(?:\s*[:=]|\s+is)\s*(['"`]?)([^\s'"`,;]{6,})\2/gi,
+    replace: (m: string) => m.replace(/((?:[:=]|\bis)\s*['"`]?)([^\s'"`,;]{6,})/i, '$1[REDACTED]'),
   },
   {
     name: 'assigned-secret',
-    // KEY=value / "api_key": "value" / TOKEN: value
+    // KEY=value / "api_key": "value" / TOKEN: value / DB_PASS=value. The short
+    // suffixes need an underscore before them, so bypass: or oauth: in code is
+    // not taken for a secret.
     pattern:
-      /\b([A-Za-z_][A-Za-z0-9_]*(?:KEY|TOKEN|SECRET|PASSWORD|PASSWD|CREDENTIAL)S?)\b(\s*[:=]\s*)(['"]?)([^\s'"`,;]{6,})\3/gi,
+      /\b([A-Za-z_][A-Za-z0-9_]*(?:KEY|TOKEN|SECRET|PASSWORD|PASSWD|CREDENTIAL)S?|(?:[A-Za-z0-9]+_)+(?:PASS|PWD|AUTH))\b(\s*[:=]\s*)(['"]?)([^\s'"`,;]{6,})\3/gi,
     replace: (m: string) => m.replace(/([:=]\s*['"]?)([^\s'"`,;]{6,})/, '$1[REDACTED]'),
+  },
+  {
+    name: 'long-hex',
+    // Hashes, hex tokens and hex-encoded keys: 16 or more hex characters with a
+    // digit among them. Commit SHAs go too; the marker still tells the scorer a
+    // specific identifier was named. UUIDs survive: their hex runs are shorter.
+    // An 0x prefix is how hex private keys are usually written, and a hyphen
+    // before or after (token-<hex>) does not hide one.
+    pattern: /(?<!\w)(?:0x)?(?=[0-9a-f]{0,1024}\d)[0-9a-f]{16,1024}(?!\w)/gi,
+    replace: '[HEX]',
+  },
+  {
+    name: 'random-token',
+    // A secret with no known prefix and no label. Last, so the named rules
+    // above get first say. '/' and '+' are allowed inside, as base64 secrets
+    // carry them; a path is rejected by its dot or by reading as words. Each
+    // chunk is judged, and so is the whole token with separators removed.
+    pattern: /(?<![\w/.~+=-])[A-Za-z0-9_+/=-]{20,1024}(?![\w/.~+=-])/g,
+    replace: (m: string) =>
+      m.split(/[-_+=/]/).some(looksRandom) || looksRandom(m.replace(/[-_+=/]/g, '')) ? '[KEY]' : m,
   },
 ];
 
+/**
+ * Whether a string reads as random rather than as words.
+ *
+ * Tuned by simulation and against real prompts and agent replies. Random
+ * base62 switches between digit, lowercase and uppercase at about 60% of
+ * positions; identifiers switch once per word. Words also give themselves away
+ * by their capitals: in CamelCase nearly every capital starts a word of three
+ * or more letters, in random text about one in five does. With a digit
+ * required as well, this catches about 92% of random 20-character tokens and
+ * over 97% from 32 up, while leaving migration names, slugs, constants and
+ * CamelCase identifiers alone. A random token with no digit at all is missed.
+ */
+function looksRandom(s: string): boolean {
+  if (s.length < 16) return false;
+  const digits = (s.match(/\d/g) ?? []).length;
+  const lower = (s.match(/[a-z]/g) ?? []).length;
+  const upper = (s.match(/[A-Z]/g) ?? []).length;
+  if (digits < 1 || lower < 2 || upper < 2) return false;
+  const words = (s.match(/[A-Z][a-z]{2,}/g) ?? []).length;
+  if (words / upper >= 0.5) return false;
+  const kind = (c: string): number => (/\d/.test(c) ? 0 : /[a-z]/.test(c) ? 1 : /[A-Z]/.test(c) ? 2 : 3);
+  let switches = 0;
+  for (let i = 1; i < s.length; i += 1) if (kind(s[i]!) !== kind(s[i - 1]!)) switches += 1;
+  return switches / (s.length - 1) >= 0.4;
+}
+
 const EMAIL_RULE: Rule = {
   name: 'email',
-  pattern: /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g,
+  // Bounded to the RFC limits: unbounded runs made a long dotted line quadratic.
+  pattern: /\b[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9.-]{1,253}\.[A-Za-z]{2,63}\b/g,
   replace: '[EMAIL]',
 };
 
@@ -125,7 +210,9 @@ export function features(text: string): Features {
     words: text.trim().split(/\s+/).filter(Boolean).length,
     lines: text.split('\n').length,
     hasCodeFence: /```/.test(text),
-    hasFilePath: /[\w\-/]+\.[a-z]{1,5}\b/i.test(text),
+    // Anchored and bounded: unanchored, a long run of word characters made this
+    // quadratic, on every prompt the hook sees.
+    hasFilePath: /(?<![\w\-/])[\w\-/]{1,256}\.[a-z]{1,5}\b/i.test(text),
     hasQuestionMark: text.includes('?'),
     hasErrorWord: /\b(error|exception|traceback|failed|stack ?trace)\b/i.test(text),
   };

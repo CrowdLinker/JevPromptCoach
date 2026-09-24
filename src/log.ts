@@ -55,6 +55,11 @@ export interface ScoreRecord {
    * served from the cache, because the same text elsewhere had other context.
    */
   context?: number;
+  /**
+   * Scored in conversation, with the agent's replies and the conversation
+   * criteria. Its probabilities are read against the conversation thresholds.
+   */
+  conversation?: true;
 }
 
 /** The correction-rate verdict for the prompt with this hash. */

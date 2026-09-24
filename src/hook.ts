@@ -9,7 +9,7 @@
  */
 import { readFileSync } from 'node:fs';
 import { loadConfig } from './config.js';
-import { promptHash } from './hash.js';
+import { promptHash, promptMatchKey } from './hash.js';
 import { appendLog, type LogEntry } from './log.js';
 import { applyPrivacy } from './redact.js';
 import { skipReason } from './skip.js';
@@ -20,6 +20,8 @@ interface HookInput {
   /** The submitted text. Claude Code 2.1.x sends `prompt`; older docs say `user_input`. */
   prompt?: string;
   user_input?: string;
+  /** Claude Code's own transcript of this session; read only when replies are enabled. */
+  transcript_path?: string;
 }
 
 function readStdin(): HookInput | null {
@@ -82,7 +84,12 @@ async function main(): Promise<void> {
   // inline.ts for the same reason. The budget is hard: whatever has not
   // answered by then is abandoned and nothing prints.
   const { runInline } = await import('./inline.js');
-  const line = await runInline(stored, hash, config, { session: entry.session, ts: entry.ts });
+  const line = await runInline(stored, hash, config, {
+    session: entry.session,
+    ts: entry.ts,
+    transcriptPath: input.transcript_path,
+    promptKey: promptMatchKey(text),
+  });
   if (line) emitLine(line);
 }
 
