@@ -26,6 +26,11 @@ const FORBIDDEN_PATHS = [
   { re: /(^|\/)\.env(\.|$)/, why: 'environment file — may hold a TypeSafe API key' },
   { re: /^test\/fixtures\/prompts\.json$/, why: 'eval fixtures — real prompts from real work' },
   { re: /^test\/eval-raw\.json$/, why: 'raw eval output — derived from private fixtures' },
+  {
+    re: /^test\/fixtures\/conversations\.json$/,
+    why: 'conversation fixtures — real prompts and agent replies from real work',
+  },
+  { re: /^test\/eval-conversations-raw\.json$/, why: 'raw eval output — derived from private fixtures' },
   { re: /\.jsonl$/, why: 'JSONL log — the prompt log is exactly this shape' },
   { re: /(^|\/)corrections\.json$/, why: 'correction records — derived from prompt pairs' },
   { re: /(^|\/)prompts\.jsonl$/, why: 'the local prompt log' },
@@ -147,7 +152,13 @@ for (const path of trackedFiles()) {
 }
 
 // The ignore rules are themselves part of the guarantee, so verify they hold.
-for (const mustIgnore of ['test/fixtures/prompts.json', 'test/eval-raw.json', '.env']) {
+for (const mustIgnore of [
+  'test/fixtures/prompts.json',
+  'test/fixtures/conversations.json',
+  'test/eval-raw.json',
+  'test/eval-conversations-raw.json',
+  '.env',
+]) {
   try {
     git(['check-ignore', '-q', mustIgnore]);
   } catch {

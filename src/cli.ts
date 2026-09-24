@@ -5,6 +5,7 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { CHECKS, GATES } from './checks.js';
 import { apiKey, apiKeySource, ENV_PATH, LOG_PATH, loadConfig, saveConfig } from './config.js';
+import { readConversations, toTurns } from './conversation.js';
 import { buildPairs, detectCorrections, estimateCorrectionTokens } from './correction.js';
 import { promptHash } from './hash.js';
 import { readHistory } from './history.js';
@@ -375,6 +376,7 @@ async function cmdConfig(argv: string[]): Promise<void> {
  * they have to be set by hand, from the criteria, before the eval is run.
  */
 async function cmdFixturesInit(argv: string[]): Promise<void> {
+  if (argv.includes('--conversations')) return cmdConversationFixturesInit(argv);
   const count = Number.parseInt(argv.find((a) => a.startsWith('--count='))?.split('=')[1] ?? '40', 10) || 40;
   const outPath = argv.find((a) => a.startsWith('--out='))?.split('=')[1] ?? 'test/fixtures/prompts.json';
   const config = loadConfig();
@@ -389,21 +391,9 @@ async function cmdFixturesInit(argv: string[]): Promise<void> {
     return;
   }
 
-  // Stratify by length so short, medium and long prompts are all represented.
-  unique.sort((a, b) => a.text.length - b.text.length);
-  const third = Math.floor(unique.length / 3);
-  const buckets = [unique.slice(0, third), unique.slice(third, 2 * third), unique.slice(2 * third)];
-  const perBucket = Math.ceil(count / 3);
-  const picked: typeof unique = [];
-  for (const bucket of buckets) {
-    const step = Math.max(1, Math.floor(bucket.length / perBucket));
-    for (let i = 0; i < bucket.length && picked.length < count; i += step) {
-      const prompt = bucket[i];
-      if (prompt) picked.push(prompt);
-    }
-  }
+  const picked = sampleByLength(unique, (p) => p.text.length, count);
 
-  const fixtures = picked.slice(0, count).map((p, i) => ({
+  const fixtures = picked.map((p, i) => ({
     id: `p${String(i).padStart(2, '0')}`,
     text: p.text,
     labels: Object.fromEntries(CHECKS.map((c) => [c.id, null])),
@@ -415,6 +405,80 @@ async function cmdFixturesInit(argv: string[]): Promise<void> {
   out('');
   out('Nothing was sent anywhere. Label them by hand from the criteria in');
   out('src/checks.ts before running `npm run eval` — see test/fixtures/README.md.');
+  out('Do not commit this file.');
+}
+
+/** Stratify by length so short, medium and long items are all represented. */
+function sampleByLength<T>(items: T[], length: (item: T) => number, count: number): T[] {
+  const sorted = items.toSorted((a, b) => length(a) - length(b));
+  const third = Math.floor(sorted.length / 3);
+  const buckets = [sorted.slice(0, third), sorted.slice(third, 2 * third), sorted.slice(2 * third)];
+  const perBucket = Math.ceil(count / 3);
+  const picked: T[] = [];
+  for (const bucket of buckets) {
+    const step = Math.max(1, Math.floor(bucket.length / perBucket));
+    for (let i = 0; i < bucket.length && picked.length < count; i += step) {
+      const item = bucket[i];
+      if (item !== undefined) picked.push(item);
+    }
+  }
+  return picked.slice(0, count);
+}
+
+/**
+ * Build unlabelled conversation fixtures: follow-up prompts, each with the two
+ * exchanges before it, the agent's replies included. Entirely local, like the
+ * prompt fixtures. Every piece is redacted as the live path would redact it
+ * before sending, so what the eval later sends is what `always` mode would.
+ */
+async function cmdConversationFixturesInit(argv: string[]): Promise<void> {
+  const count = Number.parseInt(argv.find((a) => a.startsWith('--count='))?.split('=')[1] ?? '40', 10) || 40;
+  const outPath = argv.find((a) => a.startsWith('--out='))?.split('=')[1] ?? 'test/fixtures/conversations.json';
+  const config = loadConfig();
+  const privacy = config.privacy === 'metadata_only' ? 'redact' : config.privacy;
+  const redact = (text: string): string => applyPrivacy(text, privacy).text ?? '';
+
+  process.stderr.write('Reading Claude Code history…\n');
+  const sessions = await readConversations(config.bypassPrefix);
+
+  // A follow-up is any scorable prompt after the first in its session whose
+  // previous turn ended with the agent saying something: that reply is what
+  // this fixture set exists to measure.
+  const candidates = new Map<string, { text: string; context: ReturnType<typeof toTurns> }>();
+  for (const exchanges of sessions) {
+    for (let i = 1; i < exchanges.length; i += 1) {
+      const current = exchanges[i];
+      const previous = exchanges[i - 1];
+      if (!current || !previous?.reply) continue;
+      if (skipReason(current.prompt, config.bypassPrefix) !== null) continue;
+      if (candidates.has(current.prompt)) continue;
+      candidates.set(current.prompt, {
+        text: current.prompt,
+        context: toTurns(exchanges.slice(Math.max(0, i - 2), i)),
+      });
+    }
+  }
+
+  if (candidates.size < count) {
+    out(`Only ${candidates.size} usable follow-ups in your history; need ${count}.`);
+    return;
+  }
+
+  const picked = sampleByLength([...candidates.values()], (c) => c.text.length, count);
+  const fixtures = picked.map((c, i) => ({
+    id: `c${String(i).padStart(2, '0')}`,
+    context: c.context.map((turn) => ({ role: turn.role, text: redact(turn.text) })),
+    text: redact(c.text),
+    labels: Object.fromEntries(CHECKS.map((check) => [check.id, null])),
+    gates: Object.fromEntries(GATES.map((g) => [g.id, null])),
+  }));
+
+  writeFileSync(outPath, `${JSON.stringify(fixtures, null, 1)}\n`);
+  out(`Wrote ${fixtures.length} unlabelled conversation fixtures to ${outPath}.`);
+  out('');
+  out('Nothing was sent anywhere. Label the last message of each, read together with');
+  out('its context, from the `conversation` criteria in src/checks.ts, before running');
+  out('`npm run eval -- --conversations`. See test/fixtures/README.md.');
   out('Do not commit this file.');
 }
 
@@ -466,7 +530,9 @@ const run = async (): Promise<void> => {
     case 'status':
       return cmdStatus();
     default:
-      out('usage: cli.js score <text> | report [n] | config [...] | backfill [--confirm] | fixtures-init | status');
+      out(
+        'usage: cli.js score <text> | report [n] | config [...] | backfill [--confirm] | fixtures-init [--conversations] | status',
+      );
   }
 };
 

@@ -244,6 +244,13 @@ même session, et seul le nouveau est noté. Activé par défaut ;
 `JEVPROMPTCOACH_SESSION_CONTEXT=0` le désactive. Les seuils ont été calibrés sur
 des prompts notés seuls.
 
+**Les réponses de Claude, sur demande.** Avec `JEVPROMPTCOACH_SESSION_REPLIES=1`,
+une relance est envoyée avec les deux derniers échanges (vos prompts et le texte
+final des réponses de Claude, jamais les outils ni leurs sorties), et chaque
+vérification est posée dans sa forme conversationnelle. Un échange contourné par
+`*` est retiré avec sa réponse. Désactivé par défaut. Tant que ces vérifications
+n'ont pas été calibrées, rien ne s'affiche en ligne.
+
 ## Confidentialité
 
 Les prompts contiennent du code, des chemins, et parfois des secrets.
@@ -270,6 +277,7 @@ assigné à un nom finissant par `KEY`/`TOKEN`/`SECRET`/`PASSWORD`.
 | `/jevpromptcoach:report` | Les prompts journalisés pas encore notés, expurgés, par lots |
 | `config backfill` | Votre historique, expurgé, par lots — **après** une estimation de coût et une confirmation explicite |
 | mode `always` | Chaque prompt au moment où vous l'envoyez, expurgé, plus jusqu'à deux prompts précédents de la même session comme contexte, expurgés eux aussi |
+| mode `always`, réponses activées | Idem, mais le contexte est les deux derniers échanges : vos prompts et le texte final des réponses de Claude, expurgés. Seulement avec `JEVPROMPTCOACH_SESSION_REPLIES=1` |
 | Sinon, jamais | Rien |
 
 Aucune télémétrie. Aucune autre destination réseau. La clé d'API est lue depuis

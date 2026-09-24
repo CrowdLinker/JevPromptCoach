@@ -302,6 +302,19 @@ prompt said what the change was. This is on by default. Set
 were tuned on prompts scored alone; follow-up scores have not yet been through
 the eval.
 
+**Claude's replies, if you opt in.** "Yes, commit it" can only be judged
+against what Claude offered. Set `JEVPROMPTCOACH_SESSION_REPLIES=1` and a
+follow-up is sent with the last two exchanges instead: your prompt and the
+closing text of Claude's reply, twice, then the new prompt. Each check is then
+asked in its conversation form, which gives credit for what the conversation
+already settled, such as accepting a change Claude described in a named file.
+Only Claude's visible closing text is read, never tool calls, tool output or
+subagent work, and an exchange whose prompt was bypassed with `*` is dropped
+along with its reply. This is off by default because it sends text the plugin
+otherwise never sends. Until the conversation checks have been tuned on
+labelled conversations (see [test/fixtures/README.md](test/fixtures/README.md)),
+it records scores but shows nothing inline.
+
 `always` does not use the mechanism the docs suggest. Writing to stderr with a
 non-zero exit displays nothing on Claude Code 2.1.277; a top-level
 `systemMessage` on exit 0 does. The measurements are in
@@ -336,6 +349,7 @@ secrets, `Bearer` tokens, and anything assigned to a name ending in
 | `/jevpromptcoach:report` | Any logged prompts not yet scored, redacted, batched |
 | `config backfill` | Your history, redacted, batched — **after** a cost estimate and an explicit confirmation |
 | `always` mode | Each prompt as you submit it, redacted, plus up to two earlier prompts from the same session as context, redacted again at the current level |
+| `always` mode, replies on | As above, but the context is the last two exchanges: your prompts and the closing text of Claude's replies, redacted. Off unless `JEVPROMPTCOACH_SESSION_REPLIES=1` |
 | Ever, otherwise | Nothing |
 
 No telemetry. No other network destination. The API key is read from the

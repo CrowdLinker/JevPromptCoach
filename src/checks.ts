@@ -61,6 +61,21 @@ export interface CheckDef {
    * asked — and nowhere else.
    */
   inlineEligible: boolean;
+  /**
+   * The same habit judged on a follow-up, read together with the conversation
+   * before it, the agent's replies included. Used only when replies are sent
+   * (JEVPROMPTCOACH_SESSION_REPLIES). Something counts as present if the
+   * follow-up supplies it, or if the shown conversation already established it
+   * and the follow-up relies on it, for instance by accepting what the agent
+   * proposed. The threshold and inline eligibility come from the conversation
+   * eval (`npm run eval -- --conversations`), separately from the standalone ones.
+   */
+  conversation: {
+    instructions: string;
+    criteria: { true: string; false: string };
+    threshold: number;
+    inlineEligible: boolean;
+  };
   /** Why it matters, shown by /jevpromptcoach:score when the check fails. */
   cause: string;
   consequence: string;
@@ -112,6 +127,18 @@ export const CHECKS: CheckDef[] = [
     inlineMargin: 0.2,
     // CV fail-precision 0.96 over 28 failing examples.
     inlineEligible: true,
+    conversation: {
+      instructions:
+        'The agent knows exactly where to work: the message names a concrete file, path, function, class, component, endpoint, or symbol, or points unambiguously at one already named in the conversation.',
+      criteria: {
+        true: 'Names a concrete target, or refers without ambiguity to one named earlier by either side: "the email one" after the agent listed email-worker.ts among other files, or "yes, go ahead" accepting a change the agent described in a named file.',
+        false:
+          'The target is unclear even with the conversation: nothing concrete was named earlier, or several candidates were named and the message does not say which, or the message starts new work described only in general terms.',
+      },
+      // Untuned: the standalone threshold until the conversation eval sets one.
+      threshold: 0.65,
+      inlineEligible: false,
+    },
     cause: 'You wrote "it" or "the code" instead of a name.',
     consequence: 'The agent has to guess which file you meant. It searches, or it edits the wrong one.',
     fix: 'Name the file, function, or symbol you want changed.',
@@ -130,6 +157,18 @@ export const CHECKS: CheckDef[] = [
     inlineMargin: 0.2,
     // CV fail-precision 1.00 over 14 failing examples.
     inlineEligible: true,
+    conversation: {
+      instructions:
+        'What should be true when the work is finished is known: the message states it, or it was stated earlier in the conversation and the message accepts or continues that work.',
+      criteria: {
+        true: "States the intended end state, or accepts or continues work whose end state the developer or the agent already spelled out, such as approving the agent's description of what the change will do.",
+        false:
+          'Neither the message nor the conversation it continues says what "finished" looks like, or the message starts new work without an end state.',
+      },
+      // Untuned: the standalone threshold until the conversation eval sets one.
+      threshold: 0.35,
+      inlineEligible: false,
+    },
     cause: 'Nothing in the request says what should be true at the end.',
     consequence: 'The agent picks its own finish line, and stops somewhere you did not want.',
     fix: 'Add one sentence: what should be true when this works.',
@@ -149,6 +188,18 @@ export const CHECKS: CheckDef[] = [
     inlineMargin: 0.2,
     // CV fail-precision 1.00 over 10 failing examples.
     inlineEligible: true,
+    conversation: {
+      instructions:
+        'The request, read with the conversation, is one contained, well-defined piece of work rather than an open-ended or sweeping change.',
+      criteria: {
+        true: 'Asks for one change or a small set of clearly enumerated changes, including accepting one specific proposal the agent described.',
+        false:
+          'Asks for something open-ended or sweeping, bundles several unrelated requests, or accepts a broad proposal ("do all of it") whose edges the conversation never set.',
+      },
+      // Untuned: the standalone threshold until the conversation eval sets one.
+      threshold: 0.45,
+      inlineEligible: false,
+    },
     cause: 'The request has no edges, so the agent decides how far to go.',
     consequence:
       'You get a huge change touching files you never meant to touch, and reviewing it takes longer than the fix would have.',
@@ -168,6 +219,17 @@ export const CHECKS: CheckDef[] = [
     inlineMargin: 0.2,
     // CV fail-precision 0.97 over 30 failing examples.
     inlineEligible: true,
+    conversation: {
+      instructions:
+        'A limit on the work is in force: the message states one, or one stated earlier in the conversation still applies to what the message asks for.',
+      criteria: {
+        true: 'Names something to leave alone or preserve, or forbids an approach, in the message or earlier in the conversation for this same work, and nothing has withdrawn it.',
+        false: 'No limit that applies to the requested work appears in the message or anywhere in the conversation.',
+      },
+      // Untuned: the standalone threshold until the conversation eval sets one.
+      threshold: 0.3,
+      inlineEligible: false,
+    },
     cause: 'Nothing in the request is marked off-limits.',
     consequence: 'Something that was working gets rewritten along the way.',
     fix: 'Say what must stay as it is — the API, the database schema, the other callers.',
@@ -188,6 +250,18 @@ export const CHECKS: CheckDef[] = [
     inlineMargin: 0.2,
     // only 5 failing examples in the fixture set — too thin to stand behind inline.
     inlineEligible: false,
+    conversation: {
+      instructions:
+        'For the failure being reported, the actual evidence is available: in the message, or earlier in the conversation, quoted by the developer or reported by the agent from running something.',
+      criteria: {
+        true: 'Real output (an error message, stack trace, failing assertion, or log) or a specific expected-versus-actual pair appears in the message or the conversation for this failure.',
+        false:
+          'The failure is described only in general terms, and no actual output or concrete expected-versus-actual pair for it appears anywhere in the conversation.',
+      },
+      // Untuned: the standalone threshold until the conversation eval sets one.
+      threshold: 0.4,
+      inlineEligible: false,
+    },
     cause: 'The bug is described, but the actual error text is not in the message.',
     consequence: 'The agent guesses the error from your description and fixes a different problem.',
     fix: 'Paste the real error, and say what you expected to happen instead.',
@@ -207,6 +281,17 @@ export const CHECKS: CheckDef[] = [
     inlineMargin: 0.2,
     // CV fail-precision 0.86, below the 0.90 bar.
     inlineEligible: false,
+    conversation: {
+      instructions:
+        'Before a large or risky change is carried out, a plan has been asked for or seen: the message asks for one, or it approves a plan the agent laid out in the conversation.',
+      criteria: {
+        true: 'Asks to plan, propose, outline, or investigate first, or approves a specific plan the agent already described for this change.',
+        false: 'Asks for the large change to be carried out directly, and no plan for it appears in the conversation.',
+      },
+      // Untuned: the standalone threshold until the conversation eval sets one.
+      threshold: 0.35,
+      inlineEligible: false,
+    },
     cause: 'You asked for a big or risky change without asking to see the approach first.',
     consequence: 'You find out how it was going to be done only after it has been done.',
     fix: 'Ask for the plan first, then approve it. "Plan this before changing anything."',
@@ -225,6 +310,18 @@ export const CHECKS: CheckDef[] = [
     inlineMargin: 0.2,
     // CV fail-precision 1.00 over 39 failing examples.
     inlineEligible: true,
+    conversation: {
+      instructions:
+        'How the work will be checked is known: the message names a test, command, or check, or accepts a proposal from the agent that names one, or continues work whose verification was stated earlier.',
+      criteria: {
+        true: 'A runnable or checkable step for this work (a test file or name, a command, a script, a page to load) appears in the message, or in an earlier message or agent proposal the message accepts or continues.',
+        false:
+          'No test, command, or check for this work appears in the message or the conversation, or the message says only "make sure it works".',
+      },
+      // Untuned: the standalone threshold until the conversation eval sets one.
+      threshold: 0.6,
+      inlineEligible: false,
+    },
     cause: 'Nothing in the request says how to tell whether it worked.',
     consequence: 'The agent says it worked, and you find out later that it did not.',
     fix: 'Name the command. "Verify with npm test -- auth.spec.ts."',

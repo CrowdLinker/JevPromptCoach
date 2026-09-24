@@ -3,13 +3,16 @@
  * never loads it, and with it never loads the Jev client.
  */
 import { CHECKS } from './checks.js';
-import { type Config, sessionContextEnabled } from './config.js';
+import { type Config, sessionContextEnabled, sessionRepliesEnabled } from './config.js';
+import { recentTurns, type Turn } from './conversation.js';
 import { appendScores, readScores, recentSessionPrompts } from './log.js';
 import { applyPrivacy } from './redact.js';
 import { interpret, type PromptScore, scoreOne } from './score.js';
 
 /** Earlier prompts from the session sent with a follow-up. */
 const CONTEXT_PROMPTS = 2;
+/** Earlier prompt-and-reply exchanges sent with a follow-up when replies are on. */
+const CONTEXT_EXCHANGES = 2;
 
 function format(result: PromptScore): string | null {
   // Only confident failures reach the line. `inlineSafe` has already demoted
@@ -36,21 +39,44 @@ function format(result: PromptScore): string | null {
   return `${head}\nMissing: ${missing}.`;
 }
 
+interface SessionContext {
+  /** Earlier prompts only, judged under the standalone criteria. */
+  prompts: string[];
+  /** Earlier prompts and the agent's replies, judged under the conversation criteria. */
+  conversation: Turn[];
+}
+
+const NO_CONTEXT: SessionContext = { prompts: [], conversation: [] };
+
 /**
- * Earlier prompts from this session, re-run through the privacy level: a
- * prompt logged under `raw` must still be redacted if the level is now
- * `redact`. Empty for the first prompt of a session, which is judged alone
- * because it has to carry everything the agent needs.
+ * What came before this prompt in the session, every piece re-run through the
+ * privacy level: a prompt logged under `raw`, and every agent reply, must
+ * still be redacted if the level is now `redact`. Empty for the first prompt
+ * of a session, which is judged alone because it has to carry everything the
+ * agent needs.
  */
-function sessionContext(config: Config, session: string, ts: string): string[] {
-  if (session === 'unknown' || !sessionContextEnabled()) return [];
+function sessionContext(config: Config, hash: string, at: InlineAt): SessionContext {
+  if (at.session === 'unknown' || !sessionContextEnabled()) return NO_CONTEXT;
   try {
-    return recentSessionPrompts(session, ts, CONTEXT_PROMPTS)
+    if (sessionRepliesEnabled() && at.transcriptPath) {
+      const conversation = recentTurns(at.transcriptPath, hash, CONTEXT_EXCHANGES, config.bypassPrefix)
+        .map((turn) => ({ role: turn.role, text: applyPrivacy(turn.text, config.privacy).text }))
+        .filter((turn): turn is Turn => turn.text !== null);
+      return { prompts: [], conversation };
+    }
+    const prompts = recentSessionPrompts(at.session, at.ts, CONTEXT_PROMPTS)
       .map((entry) => (entry.text === null ? null : applyPrivacy(entry.text, config.privacy).text))
       .filter((text): text is string => text !== null);
+    return { prompts, conversation: [] };
   } catch {
-    return [];
+    return NO_CONTEXT;
   }
+}
+
+interface InlineAt {
+  session: string;
+  ts: string;
+  transcriptPath?: string | undefined;
 }
 
 /**
@@ -59,20 +85,21 @@ function sessionContext(config: Config, session: string, ts: string): string[] {
  *   before the API and it does no redaction of its own.
  * @param hash Content hash of the ORIGINAL text, so the cache key is stable
  *   across privacy-level changes.
- * @param at The session and submission time of this prompt, to find the
- *   prompts before it.
+ * @param at The session, submission time and transcript of this prompt, to
+ *   find what came before it.
  */
 export async function runInline(
   redactedText: string,
   hash: string,
   config: Config,
-  at: { session: string; ts: string },
+  at: InlineAt,
 ): Promise<string | null> {
-  const context = sessionContext(config, at.session, at.ts);
+  const context = sessionContext(config, hash, at);
+  const hasContext = context.prompts.length > 0 || context.conversation.length > 0;
 
   // A prompt whose text has not changed is never scored twice, unless it is a
   // follow-up: "commit and push" means something different in every session.
-  if (context.length === 0) {
+  if (!hasContext) {
     try {
       const cached = readScores().get(hash);
       if (cached && !cached.context) {
@@ -89,7 +116,12 @@ export async function runInline(
   });
 
   const scored = await Promise.race([
-    scoreOne(redactedText, hash, { timeoutMs: config.alwaysTimeoutMs, inlineSafe: true, context }),
+    scoreOne(redactedText, hash, {
+      timeoutMs: config.alwaysTimeoutMs,
+      inlineSafe: true,
+      context: context.prompts,
+      conversation: context.conversation,
+    }),
     deadline,
   ]);
   if (!scored) return null;

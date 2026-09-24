@@ -97,7 +97,9 @@ export function buildReport(input: BuildReportInput): Report {
   for (const entry of entries) {
     const record = scores.get(entry.hash);
     if (!record) continue;
-    const result = interpret(entry.hash, record.probabilities, record.gates);
+    const result = interpret(entry.hash, record.probabilities, record.gates, {
+      mode: record.conversation ? 'conversation' : 'alone',
+    });
     const map = new Map<CheckId, Verdict>();
     for (const check of result.checks) map.set(check.id, check.verdict);
     verdicts.set(entry.hash, map);

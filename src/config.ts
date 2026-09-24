@@ -96,6 +96,17 @@ export function sessionContextEnabled(): boolean {
 }
 
 /**
+ * Whether follow-ups are scored with the agent's replies as well as the
+ * developer's earlier prompts. Off unless JEVPROMPTCOACH_SESSION_REPLIES is 1,
+ * true, on or yes: the replies are a kind of text the plugin otherwise never
+ * sends, so they are opt-in. Needs session context to be on as well.
+ */
+export function sessionRepliesEnabled(): boolean {
+  const value = envValue('JEVPROMPTCOACH_SESSION_REPLIES');
+  return value !== null && /^(1|true|on|yes)$/i.test(value);
+}
+
+/**
  * Where the key was found, for reporting. Never returns the key itself.
  * `null` means no key is available and nothing can be scored.
  */

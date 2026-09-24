@@ -61,7 +61,7 @@ after(() => server?.close());
  * spawn would block the event loop and the server could never accept the
  * hook's connection.
  */
-function runHook(privacy, prompt = PROMPT, { log = [], scores = [], env = {} } = {}) {
+function runHook(privacy, prompt = PROMPT, { log = [], scores = [], env = {}, transcript = null } = {}) {
   const home = mkdtempSync(join(tmpdir(), 'jpc-test-'));
   mkdirSync(join(home, '.claude', 'jevpromptcoach'), { recursive: true });
   if (log.length) {
@@ -69,6 +69,11 @@ function runHook(privacy, prompt = PROMPT, { log = [], scores = [], env = {} } =
       join(home, '.claude', 'jevpromptcoach', 'prompts.jsonl'),
       log.map((e) => JSON.stringify({ features: {}, source: 'hook', ...e })).join('\n') + '\n',
     );
+  }
+  let transcriptPath;
+  if (transcript) {
+    transcriptPath = join(home, 'transcript.jsonl');
+    writeFileSync(transcriptPath, transcript.map((r) => JSON.stringify(r)).join('\n') + '\n');
   }
   if (scores.length) {
     writeFileSync(
@@ -85,6 +90,7 @@ function runHook(privacy, prompt = PROMPT, { log = [], scores = [], env = {} } =
     env: {
       ...process.env,
       JEVPROMPTCOACH_SESSION_CONTEXT: '',
+      JEVPROMPTCOACH_SESSION_REPLIES: '',
       ...env,
       HOME: home,
       TYPESAFE_BASE_URL: `http://127.0.0.1:${port}`,
@@ -94,7 +100,15 @@ function runHook(privacy, prompt = PROMPT, { log = [], scores = [], env = {} } =
   child.stdout.on('data', (c) => {
     stdout += c;
   });
-  child.stdin.end(JSON.stringify({ session_id: 's', cwd: '/tmp/d', hook_event_name: 'UserPromptSubmit', prompt }));
+  child.stdin.end(
+    JSON.stringify({
+      session_id: 's',
+      cwd: '/tmp/d',
+      hook_event_name: 'UserPromptSubmit',
+      prompt,
+      ...(transcriptPath ? { transcript_path: transcriptPath } : {}),
+    }),
+  );
   return new Promise((resolve) => {
     child.on('close', (status) => {
       rmSync(home, { recursive: true, force: true });
@@ -225,6 +239,104 @@ test('/jevpromptcoach:score ignores a saved score that depended on context', asy
   rmSync(home, { recursive: true, force: true });
   assert.equal(captured.length, 1, 'expected a fresh request, not the context-based saved score');
   assert.ok(!stdout.includes('(cached'), stdout);
+});
+
+/**
+ * An invented Claude Code transcript, in the record shapes the plugin reads.
+ * It holds everything that must never reach the wire from a transcript:
+ * narration before a tool call, tool output, a subagent's text, and a bypassed
+ * exchange whose reply repeats what the bypassed prompt held.
+ */
+const say = (role, content, extra = {}) => ({
+  type: role,
+  message: { role, content },
+  sessionId: 's',
+  timestamp: '2026-01-01T00:00:00.000Z',
+  ...(role === 'user' ? { promptSource: 'typed' } : {}),
+  ...extra,
+});
+const text = (t) => [{ type: 'text', text: t }];
+const TRANSCRIPT = [
+  say('user', 'oldest exchange, outside the window'),
+  say('assistant', text('reply to the oldest exchange')),
+  say('user', `Refactor the retry logic in src/queue/worker.ts and mail bob@acme.com`),
+  say('assistant', text('narration before the tool call')),
+  say('assistant', [{ type: 'tool_use', id: 't1', name: 'Read', input: {} }]),
+  say('user', [{ type: 'tool_result', tool_use_id: 't1', content: 'TOOL OUTPUT BODY' }], { promptSource: undefined }),
+  say('assistant', text('subagent chatter'), { isSidechain: true }),
+  say('assistant', text(`Done, worker.ts backs off now. Deploy key was ${SECRET}. Want me to commit?`)),
+  say('user', '*a bypassed prompt about the private client'),
+  say('assistant', text('reply that repeats the private client')),
+  say('user', 'Yes, and keep the exported constant as it is'),
+  say('assistant', text('Kept it. Anything else before I commit?')),
+];
+const REPLIES_ON = { JEVPROMPTCOACH_SESSION_REPLIES: '1' };
+
+test('with replies on, a follow-up sends the last two exchanges, redacted, and scores only the last', async () => {
+  captured.length = 0;
+  await runHook('redact', FOLLOW_UP, { transcript: TRANSCRIPT, env: REPLIES_ON });
+  assert.equal(captured.length, 1);
+  const { state, questions } = captured[0];
+
+  assert.deepEqual(
+    state.messages.map((m) => m.role),
+    ['developer', 'agent', 'developer', 'agent', 'developer'],
+    'two exchanges, then the prompt being scored',
+  );
+  assert.equal(state.messages.at(-1).id, 'm0');
+  assert.equal(state.messages.at(-1).text, FOLLOW_UP);
+  assert.match(state.messages[1].text, /Want me to commit\?$/);
+
+  const sent = JSON.stringify(captured[0]);
+  for (const never of [
+    'oldest exchange',
+    'narration before the tool call',
+    'TOOL OUTPUT BODY',
+    'subagent chatter',
+    'bypassed prompt',
+    'private client',
+  ]) {
+    assert.ok(!sent.includes(never), `"${never}" reached the wire`);
+  }
+  assert.ok(!sent.includes(SECRET), 'a reply leaked the API key');
+  assert.ok(!sent.includes('bob@acme.com'), 'a prompt in the transcript leaked the email');
+
+  assert.ok(
+    Object.keys(questions).every((k) => k.startsWith('m0__')),
+    'context must not be scored',
+  );
+  assert.match(questions.m0__named_target.instructions, /conversation/);
+});
+
+test('with replies on, the prompt being scored is not repeated when the transcript already has it', async () => {
+  captured.length = 0;
+  const transcript = [...TRANSCRIPT, say('user', FOLLOW_UP)];
+  await runHook('redact', FOLLOW_UP, { transcript, env: REPLIES_ON });
+  const texts = captured[0].state.messages.map((m) => m.text);
+  assert.equal(texts.filter((t) => t === FOLLOW_UP).length, 1);
+  assert.equal(texts.length, 5);
+});
+
+test('with replies on, nothing is shown until the conversation checks are tuned', async () => {
+  const { stdout } = await runHook('redact', FOLLOW_UP, { transcript: TRANSCRIPT, env: REPLIES_ON });
+  assert.equal(stdout, '', 'no conversation check is inline-eligible before the eval sets one');
+});
+
+test('replies are off by default: the transcript is not read', async () => {
+  captured.length = 0;
+  await runHook('redact', FOLLOW_UP, { transcript: TRANSCRIPT, log: EARLIER });
+  const { state } = captured[0];
+  assert.ok(
+    state.messages.every((m) => m.role === undefined),
+    'no agent reply without the opt-in',
+  );
+  assert.ok(!JSON.stringify(state).includes('Want me to commit'));
+});
+
+test('with replies on, metadata_only still sends nothing', async () => {
+  captured.length = 0;
+  await runHook('metadata_only', FOLLOW_UP, { transcript: TRANSCRIPT, env: REPLIES_ON });
+  assert.equal(captured.length, 0);
 });
 
 test('a score of 0 is not shown, only what is missing', async () => {

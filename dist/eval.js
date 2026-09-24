@@ -5,10 +5,10 @@ import {
   MODEL,
   USD_PER_INPUT_TOKEN,
   scoreMany
-} from "./chunk-W564PYU5.js";
+} from "./chunk-CYMNZ7WV.js";
 import {
   apiKey
-} from "./chunk-7PP552KK.js";
+} from "./chunk-2ZQCJBWZ.js";
 
 // src/eval.ts
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
@@ -34,10 +34,22 @@ async function main() {
     process.stderr.write("TYPESAFE_API_KEY is not set. The eval calls Jev and cannot run without it.\n");
     process.exit(1);
   }
-  const fixtures = JSON.parse(readFileSync("test/fixtures/prompts.json", "utf8"));
+  const conversations = process.argv.includes("--conversations");
+  const fixturePath = conversations ? "test/fixtures/conversations.json" : "test/fixtures/prompts.json";
+  const cachePath = conversations ? "test/eval-conversations-raw.json" : "test/eval-raw.json";
+  const resultsPath = conversations ? "test/eval-conversations-results" : "test/eval-results";
+  const thresholdOf = (def) => conversations ? def.conversation.threshold : def.threshold;
+  const fixtures = JSON.parse(readFileSync(fixturePath, "utf8"));
+  const unlabelled = fixtures.filter((f) => Object.values(f.labels).every((v) => v === null));
+  if (unlabelled.length > 0) {
+    process.stderr.write(
+      `${unlabelled.length} fixtures in ${fixturePath} have no labels. Label them by hand first; see test/fixtures/README.md.
+`
+    );
+    process.exit(1);
+  }
   let inputTokens = 0;
   let records;
-  const cachePath = "test/eval-raw.json";
   if (process.argv.includes("--cached") && existsSync(cachePath)) {
     const cached = JSON.parse(readFileSync(cachePath, "utf8"));
     records = cached.records;
@@ -48,7 +60,7 @@ async function main() {
     process.stderr.write(`Scoring ${fixtures.length} fixtures\u2026
 `);
     records = await scoreMany(
-      fixtures.map((f) => ({ hash: f.id, text: f.text })),
+      fixtures.map((f) => ({ hash: f.id, text: f.text, ...f.context ? { conversation: f.context } : {} })),
       {
         onUsage: (u) => {
           inputTokens += u.input_tokens;
@@ -97,7 +109,7 @@ async function main() {
       const record = byId.get(fixture.id);
       const p = record?.probabilities[def.id];
       if (p === void 0) continue;
-      rows.push({ truth, predicted: p >= def.threshold });
+      rows.push({ truth, predicted: p >= thresholdOf(def) });
       raw.push({ truth, p });
     }
     const fail = metricsFor(
@@ -105,7 +117,7 @@ async function main() {
       true
     );
     const pass = metricsFor(rows, true);
-    let best = def.threshold;
+    let best = thresholdOf(def);
     if (tune) {
       let bestScore = -1;
       for (let t = 0.05; t <= 0.95; t += 0.05) {
@@ -126,10 +138,10 @@ async function main() {
     if (measurable && !clears) allClear = false;
     const verdict = !measurable ? `too few fail cases (n=${fail.support}) \u2014 not measurable` : clears ? "ok" : `BELOW ${TARGET_PRECISION}`;
     lines.push(
-      `  ${def.id.padEnd(20)} ${def.threshold.toFixed(2)} |  ${fmt(fail.precision)}  ${fmt(fail.recall)} ${String(fail.support).padStart(2)} |  ${fmt(pass.precision)}  ${fmt(pass.recall)} ${String(pass.support).padStart(2)} | ${verdict}${tune ? `  (best thr ${best})` : ""}`
+      `  ${def.id.padEnd(20)} ${thresholdOf(def).toFixed(2)} |  ${fmt(fail.precision)}  ${fmt(fail.recall)} ${String(fail.support).padStart(2)} |  ${fmt(pass.precision)}  ${fmt(pass.recall)} ${String(pass.support).padStart(2)} | ${verdict}${tune ? `  (best thr ${best})` : ""}`
     );
     results[def.id] = {
-      threshold: def.threshold,
+      threshold: thresholdOf(def),
       fail: { precision: fail.precision, recall: fail.recall, support: fail.support },
       pass: { precision: pass.precision, recall: pass.recall, support: pass.support },
       measurable,
@@ -148,7 +160,7 @@ async function main() {
     for (let fold = 0; fold < 5; fold += 1) {
       const test = labelled.filter((_, i) => i % 5 === fold);
       const train = labelled.filter((_, i) => i % 5 !== fold);
-      let thr = def.threshold;
+      let thr = thresholdOf(def);
       let bestScore = -1;
       for (let t = 0.05; t <= 0.95; t += 0.05) {
         const m = metricsFor(
@@ -177,12 +189,13 @@ async function main() {
   const report = lines.join("\n");
   process.stdout.write(report + "\n");
   writeFileSync(
-    "test/eval-results.json",
+    `${resultsPath}.json`,
     JSON.stringify(
       {
         ranAt: (/* @__PURE__ */ new Date()).toISOString(),
         model: MODEL,
         fixtures: fixtures.length,
+        ...conversations ? { set: "conversations" } : {},
         inputTokens,
         targetPrecision: TARGET_PRECISION,
         checks: results
@@ -191,7 +204,7 @@ async function main() {
       2
     ) + "\n"
   );
-  writeFileSync("test/eval-results.txt", report + "\n");
+  writeFileSync(`${resultsPath}.txt`, report + "\n");
   process.exit(allClear ? 0 : 1);
 }
 main().catch((err) => {
