@@ -339,6 +339,92 @@ test('with a transcript, the first prompt of a session is still scored alone', a
   assert.equal(captured[0].state.messages[0].role, undefined, 'judged by the standalone criteria');
 });
 
+test('narration in the same record as a tool call is not sent', async () => {
+  captured.length = 0;
+  const transcript = [
+    say('user', 'Refactor src/queue/worker.ts to back off exponentially'),
+    say('assistant', [
+      { type: 'text', text: 'narration sharing a record with the call' },
+      { type: 'tool_use', id: 't9', name: 'Read', input: {} },
+    ]),
+    say('assistant', text('final answer about worker.ts')),
+  ];
+  await runHook('redact', FOLLOW_UP, { transcript });
+  const sent = JSON.stringify(captured[0]);
+  assert.ok(!sent.includes('narration sharing a record'), 'narration before the call reached the wire');
+  assert.ok(sent.includes('final answer about worker.ts'));
+});
+
+test('a queued prompt is its own exchange, and a bypassed one is dropped with its reply', async () => {
+  captured.length = 0;
+  const transcript = [
+    say('user', 'Refactor src/queue/worker.ts to back off exponentially'),
+    say('assistant', text('first reply')),
+    say('user', '*queued note about the private client', { promptSource: 'queued' }),
+    say('assistant', text('reply that repeats the private client')),
+    say('user', 'Also cap the delay at thirty seconds', { promptSource: 'queued' }),
+    say('assistant', text('capped at 30s')),
+  ];
+  await runHook('redact', FOLLOW_UP, { transcript });
+  const { state } = captured[0];
+  const sent = JSON.stringify(state);
+  assert.ok(!sent.includes('private client'), 'a bypassed queued prompt or its reply reached the wire');
+  assert.deepEqual(
+    state.messages.map((m) => m.text),
+    [
+      'Refactor src/queue/worker.ts to back off exponentially',
+      'first reply',
+      'Also cap the delay at thirty seconds',
+      'capped at 30s',
+      FOLLOW_UP,
+    ],
+  );
+});
+
+test('text after a system or SDK message is not taken as a reply to the prompt before it', async () => {
+  captured.length = 0;
+  const transcript = [
+    say('user', 'Refactor src/queue/worker.ts to back off exponentially'),
+    say('assistant', text('the real reply')),
+    say('user', 'a notice nobody typed', { promptSource: 'system' }),
+    say('assistant', text('text answering the notice')),
+    say('user', 'input from an SDK caller', { promptSource: 'sdk' }),
+    say('assistant', text('text answering the SDK caller')),
+  ];
+  await runHook('redact', FOLLOW_UP, { transcript });
+  const sent = JSON.stringify(captured[0]);
+  assert.ok(sent.includes('the real reply'));
+  for (const never of ['notice nobody typed', 'answering the notice', 'SDK caller']) {
+    assert.ok(!sent.includes(never), `"${never}" reached the wire`);
+  }
+});
+
+test('the prompt being scored is recognised even when the transcript splits it into blocks', async () => {
+  captured.length = 0;
+  const prompt = 'Commit the retry change\n\nthen push it to the branch';
+  const transcript = [
+    ...TRANSCRIPT,
+    say('user', [
+      { type: 'text', text: 'Commit the retry change' },
+      { type: 'text', text: 'then push it to the branch' },
+    ]),
+  ];
+  await runHook('redact', prompt, { transcript });
+  const texts = captured[0].state.messages.map((m) => m.text);
+  assert.equal(texts.length, 5, 'two exchanges, then the prompt, with no duplicate');
+  assert.equal(texts.filter((t) => t.startsWith('Commit the retry change')).length, 1);
+});
+
+test('an earlier identical prompt that got a reply stays as context', async () => {
+  captured.length = 0;
+  const transcript = [say('user', FOLLOW_UP), say('assistant', text('pushed to the branch'))];
+  await runHook('redact', FOLLOW_UP, { transcript });
+  assert.deepEqual(
+    captured[0].state.messages.map((m) => m.text),
+    [FOLLOW_UP, 'pushed to the branch', FOLLOW_UP],
+  );
+});
+
 test('replies are on by default', async () => {
   captured.length = 0;
   await runHook('redact', FOLLOW_UP, { transcript: TRANSCRIPT });

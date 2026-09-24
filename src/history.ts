@@ -12,6 +12,7 @@ import { readdirSync, statSync, createReadStream, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { createInterface } from 'node:readline';
+import { stripPreamble } from './hash.js';
 
 export interface HistoryPrompt {
   ts: string;
@@ -82,14 +83,6 @@ export function listTranscripts(dir = PROJECTS_DIR): string[] {
     }
   }
   return files;
-}
-
-/** Strip the attachment preamble Claude Code prepends to a prompt with files. */
-export function stripPreamble(text: string): string {
-  return text
-    .replace(/^\s*<system_instruction>[\s\S]*?<\/system_instruction>\s*/g, '')
-    .replace(/<ide_selection>[\s\S]*?<\/ide_selection>/g, '')
-    .trim();
 }
 
 async function readTranscript(path: string, out: HistoryPrompt[]): Promise<void> {

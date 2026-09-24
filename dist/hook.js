@@ -2,8 +2,9 @@
 import {
   appendLog,
   promptHash,
+  promptMatchKey,
   skipReason
-} from "./chunk-GAEH5QUR.js";
+} from "./chunk-33DTCFCS.js";
 import {
   loadConfig
 } from "./chunk-KYVNDBDC.js";
@@ -50,11 +51,12 @@ async function main() {
   }
   if (config.mode !== "always") return;
   if (stored === null) return;
-  const { runInline } = await import("./inline-74H2DKE5.js");
+  const { runInline } = await import("./inline-JMBTLEEZ.js");
   const line = await runInline(stored, hash, config, {
     session: entry.session,
     ts: entry.ts,
-    transcriptPath: input.transcript_path
+    transcriptPath: input.transcript_path,
+    promptKey: promptMatchKey(text)
   });
   if (line) emitLine(line);
 }

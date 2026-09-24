@@ -264,8 +264,11 @@ Stripe `sk_live_`/`rk_live_`, `npm_`, SendGrid `SG.`, URL de webhooks de Slack y
 Discord, JWT, bloques PEM, secretos de cliente y firmas SAS de Azure, tokens
 `Bearer`, la contraseña de cualquier URL `esquema://usuario:contraseña@host`,
 todo lo etiquetado como `password`, y cualquier cosa asignada a un nombre que
-acabe en `KEY`/`TOKEN`/`SECRET`/`PASSWORD` o `_PASS`/`_PWD`/`_AUTH`. Un secreto
-sin prefijo conocido ni etiqueta parece un hash de commit y no se elimina.
+acabe en `KEY`/`TOKEN`/`SECRET`/`PASSWORD` o `_PASS`/`_PWD`/`_AUTH`. Sin prefijo
+ni etiqueta, dos formas se eliminan igualmente: cualquier secuencia de 16 o más
+caracteres hexadecimales pasa a `[HEX]`, y un token de aspecto aleatorio de 20 o
+más caracteres pasa a `[KEY]`. Solo un secreto que no es hexadecimal ni aleatorio
+y no lleva etiqueta, como una contraseña con forma de palabra, no se elimina.
 
 **Qué se envía exactamente, y cuándo:**
 

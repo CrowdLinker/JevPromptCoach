@@ -344,14 +344,18 @@ and friends, `github_pat_`, `AKIA`/`ASIA`, `AIza`, Slack `xox*`, Stripe
 `sk_live_`/`rk_live_`, `npm_`, SendGrid `SG.`, Slack and Discord webhook URLs,
 JWTs, PEM blocks, Azure client secrets and SAS signatures, `Bearer` tokens, the
 password in any `scheme://user:password@host` URL, anything labelled `password`
-(JSON keys included), and anything assigned to a name ending in
-`KEY`/`TOKEN`/`SECRET`/`PASSWORD` or `_PASS`/`_PWD`/`_AUTH`.
+(JSON keys and "password is …" included), and anything assigned to a name
+ending in `KEY`/`TOKEN`/`SECRET`/`PASSWORD` or `_PASS`/`_PWD`/`_AUTH`. With no
+prefix and no label, two shapes still go: any run of 16 or more hex characters
+becomes `[HEX]` (commit SHAs too; the marker keeps the fact that an identifier
+was named), and a random-looking token of 20 or more characters becomes
+`[KEY]`.
 
-Redaction works by shape, and that has a limit: a secret with no known prefix
-and no label, such as a bare hex token in a sentence, looks exactly like a
-commit hash or an id, and is not removed. That applies to your prompts and to
-Claude's replies alike; set `JEVPROMPTCOACH_SESSION_REPLIES=0` if you would
-rather replies never leave the machine.
+Redaction works by shape, and that has a limit: a secret that is neither hex
+nor random-looking and carries no label, such as a word-like password on its
+own, is not removed. That applies to your prompts and to Claude's replies
+alike; set `JEVPROMPTCOACH_SESSION_REPLIES=0` if you would rather replies never
+leave the machine.
 
 **Exactly what is sent, and when:**
 

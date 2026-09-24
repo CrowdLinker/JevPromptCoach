@@ -55,11 +55,11 @@ const NO_CONTEXT: SessionContext = { prompts: [], conversation: [] };
  * of a session, which is judged alone because it has to carry everything the
  * agent needs.
  */
-function sessionContext(config: Config, hash: string, at: InlineAt): SessionContext {
+function sessionContext(config: Config, at: InlineAt): SessionContext {
   if (at.session === 'unknown' || !sessionContextEnabled()) return NO_CONTEXT;
   try {
     if (sessionRepliesEnabled() && at.transcriptPath) {
-      const conversation = recentTurns(at.transcriptPath, hash, CONTEXT_EXCHANGES, config.bypassPrefix)
+      const conversation = recentTurns(at.transcriptPath, at.promptKey, CONTEXT_EXCHANGES, config.bypassPrefix)
         .map((turn) => ({ role: turn.role, text: applyPrivacy(turn.text, config.privacy).text }))
         .filter((turn): turn is Turn => turn.text !== null);
       return { prompts: [], conversation };
@@ -77,6 +77,8 @@ interface InlineAt {
   session: string;
   ts: string;
   transcriptPath?: string | undefined;
+  /** promptMatchKey of the original prompt: a hash, so no text crosses here. */
+  promptKey: string;
 }
 
 /**
@@ -94,7 +96,7 @@ export async function runInline(
   config: Config,
   at: InlineAt,
 ): Promise<string | null> {
-  const context = sessionContext(config, hash, at);
+  const context = sessionContext(config, at);
   const hasContext = context.prompts.length > 0 || context.conversation.length > 0;
 
   // A prompt whose text has not changed is never scored twice, unless it is a

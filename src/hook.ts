@@ -9,7 +9,7 @@
  */
 import { readFileSync } from 'node:fs';
 import { loadConfig } from './config.js';
-import { promptHash } from './hash.js';
+import { promptHash, promptMatchKey } from './hash.js';
 import { appendLog, type LogEntry } from './log.js';
 import { applyPrivacy } from './redact.js';
 import { skipReason } from './skip.js';
@@ -88,6 +88,7 @@ async function main(): Promise<void> {
     session: entry.session,
     ts: entry.ts,
     transcriptPath: input.transcript_path,
+    promptKey: promptMatchKey(text),
   });
   if (line) emitLine(line);
 }

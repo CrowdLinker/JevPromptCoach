@@ -11,22 +11,15 @@
  */
 import { closeSync, createReadStream, fstatSync, openSync, readSync } from 'node:fs';
 import { createInterface } from 'node:readline';
-import { promptHash } from './hash.js';
-import {
-  isHumanPrompt,
-  listTranscripts,
-  PROJECTS_DIR,
-  stripPreamble,
-  textOf,
-  type TranscriptRecord,
-} from './history.js';
+import { promptMatchKey, stripPreamble } from './hash.js';
+import { isHumanPrompt, listTranscripts, PROJECTS_DIR, textOf, type TranscriptRecord } from './history.js';
 import { type SkipReason, skipReason } from './skip.js';
 
 export interface Exchange {
   /** The developer's prompt, attachment preamble removed. */
   prompt: string;
-  /** Hash of the prompt exactly as submitted, to recognise the one being scored. */
-  hash: string;
+  /** promptMatchKey of the prompt, to recognise the one being scored. */
+  key: string;
   /** The agent's closing text for the turn; empty if it wrote none. */
   reply: string;
   ts: string;
@@ -56,10 +49,35 @@ function clampReply(text: string): string {
   return text.length <= MAX_REPLY_CHARS ? text : `…\n${text.slice(-(MAX_REPLY_CHARS - 2))}`;
 }
 
-function hasToolUse(content: unknown): boolean {
+function blockType(b: unknown): string | undefined {
+  return typeof b === 'object' && b !== null ? (b as { type?: string }).type : undefined;
+}
+
+/**
+ * A prompt the developer typed while the agent was still working. Not a
+ * human prompt for history (src/history.ts), but in a conversation it is one:
+ * the replies after it answer it, and the bypass rules must apply to it.
+ */
+function isQueuedPrompt(record: TranscriptRecord): boolean {
   return (
-    Array.isArray(content) &&
-    content.some((b) => typeof b === 'object' && b !== null && (b as { type?: string }).type === 'tool_use')
+    record.type === 'user' &&
+    record.promptSource === 'queued' &&
+    !record.isMeta &&
+    !(Array.isArray(record.message?.content) && record.message.content.some((b) => blockType(b) === 'tool_result'))
+  );
+}
+
+/**
+ * A user-role message that nobody typed: Claude Code's system notices and SDK
+ * input. What the agent writes after one is not a reply to the developer's
+ * prompt, so it closes that exchange rather than extending its reply.
+ */
+function isOtherSender(record: TranscriptRecord): boolean {
+  return (
+    record.type === 'user' &&
+    record.promptSource !== undefined &&
+    !record.isMeta &&
+    !(Array.isArray(record.message?.content) && record.message.content.some((b) => blockType(b) === 'tool_result'))
   );
 }
 
@@ -77,14 +95,14 @@ class ExchangeBuilder {
 
   add(record: TranscriptRecord): void {
     if (record.isSidechain) return;
-    if (isHumanPrompt(record)) {
+    if (isHumanPrompt(record) || isQueuedPrompt(record)) {
       this.close();
       const raw = textOf(record.message?.content);
       const prompt = stripPreamble(raw);
       const reason = skipReason(prompt || raw, this.bypassPrefix);
       this.current = {
         prompt,
-        hash: promptHash(raw),
+        key: promptMatchKey(raw),
         reply: '',
         ts: record.timestamp ?? '',
         session: record.sessionId ?? '',
@@ -92,19 +110,31 @@ class ExchangeBuilder {
       };
       return;
     }
+    if (isOtherSender(record)) {
+      this.close();
+      this.current = { prompt: '', key: '', reply: '', ts: '', session: '', excluded: true };
+      return;
+    }
     if (record.type !== 'assistant' || !this.current) return;
-    const content = record.message?.content;
+    let content = record.message?.content;
     // Text written before a tool call is narration ("let me check"); only what
-    // follows the last one is the reply the developer answered.
-    if (hasToolUse(content)) this.parts = [];
+    // follows the last one is the reply the developer answered. That holds
+    // inside a record too, should one carry text and a tool call together.
+    if (Array.isArray(content)) {
+      const lastToolUse = content.findLastIndex((b) => blockType(b) === 'tool_use');
+      if (lastToolUse >= 0) {
+        this.parts = [];
+        content = content.slice(lastToolUse + 1);
+      }
+    }
     const text = textOf(content).trim();
     if (text) this.parts.push(text);
   }
 
   close(): void {
     if (this.current && !this.current.excluded) {
-      const { prompt, hash, ts, session } = this.current;
-      this.exchanges.push({ prompt, hash, ts, session, reply: clampReply(this.parts.join('\n\n')) });
+      const { prompt, key, ts, session } = this.current;
+      this.exchanges.push({ prompt, key, ts, session, reply: clampReply(this.parts.join('\n\n')) });
     }
     this.current = null;
     this.parts = [];
@@ -137,9 +167,10 @@ function parseLine(line: string): TranscriptRecord | null {
  * The last `count` exchanges before the prompt being scored, flattened into
  * turns, oldest first. Reads only the tail of the transcript. The prompt being
  * scored may or may not be in the transcript yet when the hook runs; it is
- * recognised by hash and left out either way.
+ * recognised by its match key and left out either way. An earlier identical
+ * prompt that already has a reply is real context and stays.
  */
-export function recentTurns(transcriptPath: string, currentHash: string, count: number, bypassPrefix: string): Turn[] {
+export function recentTurns(transcriptPath: string, currentKey: string, count: number, bypassPrefix: string): Turn[] {
   const builder = new ExchangeBuilder(bypassPrefix);
   // The first line may be cut by the tail boundary; it fails to parse and is skipped.
   for (const line of readTail(transcriptPath).split('\n')) {
@@ -149,7 +180,8 @@ export function recentTurns(transcriptPath: string, currentHash: string, count: 
   builder.close();
 
   const exchanges = builder.exchanges;
-  if (exchanges.at(-1)?.hash === currentHash) exchanges.pop();
+  const last = exchanges.at(-1);
+  if (last && !last.reply && last.key === currentKey) exchanges.pop();
   return toTurns(exchanges.slice(-count));
 }
 
