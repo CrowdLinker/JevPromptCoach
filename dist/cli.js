@@ -13,7 +13,7 @@ import {
   readLog,
   readScores,
   writeCorrections
-} from "./chunk-U3OSFJLP.js";
+} from "./chunk-HXIO5BL2.js";
 import {
   CHECKS,
   CORRECTION_QUESTION,
@@ -501,7 +501,7 @@ async function cmdScore(argv, stdinText) {
   const sendable = safe ?? text;
   const hash = promptHash(text);
   const cached = readScores().get(hash);
-  if (cached) {
+  if (cached && !cached.context) {
     out(renderScore(text, interpret(hash, cached.probabilities, cached.gates)));
     out("");
     out("(cached \u2014 this exact text was scored before)");

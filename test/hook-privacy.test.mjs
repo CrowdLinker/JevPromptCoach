@@ -13,6 +13,7 @@ import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { spawn } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -60,13 +61,19 @@ after(() => server?.close());
  * spawn would block the event loop and the server could never accept the
  * hook's connection.
  */
-function runHook(privacy, prompt = PROMPT, { log = [], env = {} } = {}) {
+function runHook(privacy, prompt = PROMPT, { log = [], scores = [], env = {} } = {}) {
   const home = mkdtempSync(join(tmpdir(), 'jpc-test-'));
   mkdirSync(join(home, '.claude', 'jevpromptcoach'), { recursive: true });
   if (log.length) {
     writeFileSync(
       join(home, '.claude', 'jevpromptcoach', 'prompts.jsonl'),
       log.map((e) => JSON.stringify({ features: {}, source: 'hook', ...e })).join('\n') + '\n',
+    );
+  }
+  if (scores.length) {
+    writeFileSync(
+      join(home, '.claude', 'jevpromptcoach', 'scores.jsonl'),
+      scores.map((r) => JSON.stringify(r)).join('\n') + '\n',
     );
   }
   writeFileSync(join(home, '.claude', 'jevpromptcoach', '.env'), 'TYPESAFE_API_KEY=not-a-real-key\n');
@@ -109,6 +116,18 @@ test('always mode sends the redacted prompt, never the raw one', async () => {
   assert.ok(sent.includes('main.ts'), 'the filename should survive redaction');
 });
 
+/** The cache key the hook computes, mirrored from src/hash.ts. */
+const hashOf = (text) => createHash('sha256').update(text.trim(), 'utf8').digest('hex').slice(0, 16);
+const FOLLOW_UP = 'Now commit and push all of it';
+const savedScore = (extra = {}) => ({
+  hash: hashOf(FOLLOW_UP),
+  ts: '2026-01-01T00:00:00.000Z',
+  probabilities: { named_target: 0.99 },
+  gates: {},
+  model: 'test',
+  ...extra,
+});
+
 /**
  * A follow-up carries the two prompts before it in the same session. They are
  * written to the log as raw text, as if captured under `raw`, so the test also
@@ -123,7 +142,7 @@ const EARLIER = [
 
 test('a follow-up sends the two earlier prompts, redacted, and scores only the last', async () => {
   captured.length = 0;
-  const result = await runHook('redact', 'Now commit and push all of it', { log: EARLIER });
+  const result = await runHook('redact', FOLLOW_UP, { log: EARLIER });
   assert.equal(result.status, 0);
   assert.equal(captured.length, 1);
 
@@ -131,7 +150,7 @@ test('a follow-up sends the two earlier prompts, redacted, and scores only the l
   const texts = state.messages.map((m) => m.text);
   assert.equal(texts.length, 3, 'two context prompts plus the one being scored');
   assert.equal(state.messages.at(-1).id, 'm0');
-  assert.equal(texts.at(-1), 'Now commit and push all of it');
+  assert.equal(texts.at(-1), FOLLOW_UP);
   assert.ok(!texts.some((t) => t.includes('oldest') || t.includes('another session')));
 
   const sent = JSON.stringify(captured[0]);
@@ -149,17 +168,63 @@ test('a follow-up sends the two earlier prompts, redacted, and scores only the l
 test('the first prompt of a session is scored on its own', async () => {
   captured.length = 0;
   const log = EARLIER.filter((e) => e.session === 'other');
-  await runHook('redact', 'Now commit and push all of it', { log });
+  await runHook('redact', FOLLOW_UP, { log });
   assert.equal(captured[0].state.messages.length, 1);
 });
 
 test('JEVPROMPTCOACH_SESSION_CONTEXT=0 turns the context off', async () => {
   captured.length = 0;
-  await runHook('redact', 'Now commit and push all of it', {
+  await runHook('redact', FOLLOW_UP, {
     log: EARLIER,
     env: { JEVPROMPTCOACH_SESSION_CONTEXT: '0' },
   });
   assert.equal(captured[0].state.messages.length, 1);
+});
+
+test('a first prompt is not served a score that depended on context', async () => {
+  captured.length = 0;
+  await runHook('redact', FOLLOW_UP, { scores: [savedScore({ context: 2 })] });
+  assert.equal(captured.length, 1, 'expected a fresh request, not the context-based saved score');
+});
+
+test('a first prompt is served a saved standalone score', async () => {
+  captured.length = 0;
+  await runHook('redact', FOLLOW_UP, { scores: [savedScore()] });
+  assert.equal(captured.length, 0, 'unchanged text scored alone should come from the cache');
+});
+
+test('a later score with context does not displace a saved standalone score', async () => {
+  captured.length = 0;
+  const later = savedScore({ ts: '2026-01-02T00:00:00.000Z', context: 2 });
+  await runHook('redact', FOLLOW_UP, { scores: [savedScore(), later] });
+  assert.equal(captured.length, 0, 'the standalone score should still be served from the cache');
+});
+
+test('a follow-up is scored fresh even when the same text was saved alone', async () => {
+  captured.length = 0;
+  await runHook('redact', FOLLOW_UP, { log: EARLIER, scores: [savedScore()] });
+  assert.equal(captured.length, 1, 'expected a fresh request with context');
+  assert.equal(captured[0].state.messages.length, 3);
+});
+
+test('/jevpromptcoach:score ignores a saved score that depended on context', async () => {
+  captured.length = 0;
+  const home = mkdtempSync(join(tmpdir(), 'jpc-test-'));
+  const dir = join(home, '.claude', 'jevpromptcoach');
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, '.env'), 'TYPESAFE_API_KEY=not-a-real-key\n');
+  writeFileSync(join(dir, 'scores.jsonl'), JSON.stringify(savedScore({ context: 2 })) + '\n');
+  const child = spawn(process.execPath, ['dist/cli.js', 'score', FOLLOW_UP], {
+    env: { ...process.env, HOME: home, TYPESAFE_BASE_URL: `http://127.0.0.1:${port}` },
+  });
+  let stdout = '';
+  child.stdout.on('data', (c) => {
+    stdout += c;
+  });
+  await new Promise((resolve) => child.on('close', resolve));
+  rmSync(home, { recursive: true, force: true });
+  assert.equal(captured.length, 1, 'expected a fresh request, not the context-based saved score');
+  assert.ok(!stdout.includes('(cached'), stdout);
 });
 
 test('a score of 0 is not shown, only what is missing', async () => {

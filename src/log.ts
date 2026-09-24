@@ -141,9 +141,19 @@ export function clearLocalData(): void {
   writeFileSync(CORRECTIONS_PATH, '[]', { mode: 0o600 });
 }
 
+/**
+ * One record per hash, the latest winning, except that a score which depended
+ * on session context never displaces one of the text judged alone: the
+ * standalone record is the one a cache hit may serve, and compactScores keeps
+ * only what this returns.
+ */
 export function readScores(): Map<string, ScoreRecord> {
   const map = new Map<string, ScoreRecord>();
-  for (const record of readJsonl<ScoreRecord>(CACHE_PATH)) map.set(record.hash, record);
+  for (const record of readJsonl<ScoreRecord>(CACHE_PATH)) {
+    const existing = map.get(record.hash);
+    if (record.context && existing && !existing.context) continue;
+    map.set(record.hash, record);
+  }
   return map;
 }
 

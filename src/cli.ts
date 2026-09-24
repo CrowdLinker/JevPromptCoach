@@ -88,8 +88,9 @@ async function cmdScore(argv: string[], stdinText?: string): Promise<void> {
   const sendable = safe ?? text;
   const hash = promptHash(text);
 
+  // A score that depended on session context is not this text judged alone.
   const cached = readScores().get(hash);
-  if (cached) {
+  if (cached && !cached.context) {
     out(renderScore(text, interpret(hash, cached.probabilities, cached.gates)));
     out('');
     out('(cached — this exact text was scored before)');
