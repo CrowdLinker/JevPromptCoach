@@ -226,6 +226,14 @@ Garantías:
 - **Solo hallazgos defendibles.** Dos comprobaciones quedan excluidas de la
   línea en pantalla según la evidencia de la eval, y cualquier cosa cerca de un
   umbral se descarta en lugar de mostrarse.
+- **Sin 0/100.** Cuando no pasa ninguna comprobación decidida, el aviso muestra
+  lo que falta, sin el número.
+
+**Los seguimientos se leen en contexto.** El primer prompt de una sesión se
+puntúa solo. Un prompt posterior se envía con los dos prompts anteriores de la
+misma sesión, y solo se puntúa el nuevo. Activado por defecto;
+`JEVPROMPTCOACH_SESSION_CONTEXT=0` lo desactiva. Los umbrales se calibraron con
+prompts puntuados solos.
 
 ## Privacidad
 
@@ -252,7 +260,7 @@ un nombre que acabe en `KEY`/`TOKEN`/`SECRET`/`PASSWORD`.
 | `/jevpromptcoach:score` | El único prompt que pasaste, depurado |
 | `/jevpromptcoach:report` | Los prompts registrados sin puntuar, depurados, por lotes |
 | `config backfill` | Tu historial, depurado, por lotes — **después** de una estimación de coste y una confirmación explícita |
-| modo `always` | Cada prompt al enviarlo, depurado |
+| modo `always` | Cada prompt al enviarlo, depurado, más hasta dos prompts anteriores de la misma sesión como contexto, también depurados |
 | En cualquier otro momento | Nada |
 
 Sin telemetría. Sin ningún otro destino de red. La clave de API se lee del
@@ -260,7 +268,7 @@ entorno o del archivo de clave, y nunca se registra, se imprime ni se incluye en
 un mensaje de error.
 
 Un prompt se puntúa una sola vez. Los resultados se cachean por hash del
-contenido.
+contenido, salvo un seguimiento en modo `always`, cuyo contexto cambia.
 
 ## Contribuir
 

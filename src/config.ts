@@ -66,15 +66,33 @@ export const ENV_PATH = join(DATA_DIR, '.env');
  * The file is created 0600 and is the developer's to delete.
  */
 export function apiKey(): string | null {
-  const fromEnv = process.env.TYPESAFE_API_KEY?.trim();
+  return envValue('TYPESAFE_API_KEY');
+}
+
+/**
+ * A setting from the environment, falling back to the key file for the same
+ * reason the key does: the hook does not run under the developer's shell
+ * profile. `name` is always a constant from this codebase, never user input.
+ */
+export function envValue(name: string): string | null {
+  const fromEnv = process.env[name]?.trim();
   if (fromEnv) return fromEnv;
   try {
-    const match = /^\s*TYPESAFE_API_KEY\s*=\s*(.+?)\s*$/m.exec(readFileSync(ENV_PATH, 'utf8'));
-    const key = match?.[1]?.replace(/^['"]|['"]$/g, '').trim();
-    return key ? key : null;
+    const match = new RegExp(`^\\s*${name}\\s*=\\s*(.+?)\\s*$`, 'm').exec(readFileSync(ENV_PATH, 'utf8'));
+    const value = match?.[1]?.replace(/^['"]|['"]$/g, '').trim();
+    return value ? value : null;
   } catch {
     return null;
   }
+}
+
+/**
+ * Whether `always` mode scores a follow-up against the earlier prompts in its
+ * session. On unless JEVPROMPTCOACH_SESSION_CONTEXT is set to 0, false, off or no.
+ */
+export function sessionContextEnabled(): boolean {
+  const value = envValue('JEVPROMPTCOACH_SESSION_CONTEXT');
+  return value === null || !/^(0|false|off|no)$/i.test(value);
 }
 
 /**

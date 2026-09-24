@@ -288,6 +288,19 @@ Guarantees:
 - **Only findings we can stand behind.** Two checks are barred from the inline
   line entirely on the eval evidence below, and anything near a threshold is
   dropped rather than shown.
+- **No 0/100.** The inline score counts only the checks decided with
+  confidence, often three or four of them, so a 0 said less than it looked. When
+  none of those pass, the notice shows what is missing and leaves the number off.
+
+**Follow-ups are read in context.** The first prompt of a session is scored on
+its own, because it has to carry everything the agent needs. A later prompt is
+sent with the two prompts before it in the same session, and only the new one
+is scored: "commit and push all changes" is a fine follow-up once the earlier
+prompt said what the change was. This is on by default. Set
+`JEVPROMPTCOACH_SESSION_CONTEXT=0`, in your environment or in
+`~/.claude/jevpromptcoach/.env`, to score every prompt alone. The thresholds
+were tuned on prompts scored alone; follow-up scores have not yet been through
+the eval.
 
 `always` does not use the mechanism the docs suggest. Writing to stderr with a
 non-zero exit displays nothing on Claude Code 2.1.277; a top-level
@@ -322,7 +335,7 @@ secrets, `Bearer` tokens, and anything assigned to a name ending in
 | `/jevpromptcoach:score` | The one prompt you passed, redacted |
 | `/jevpromptcoach:report` | Any logged prompts not yet scored, redacted, batched |
 | `config backfill` | Your history, redacted, batched — **after** a cost estimate and an explicit confirmation |
-| `always` mode | Each prompt as you submit it, redacted |
+| `always` mode | Each prompt as you submit it, redacted, plus up to two earlier prompts from the same session as context, redacted again at the current level |
 | Ever, otherwise | Nothing |
 
 No telemetry. No other network destination. The API key is read from the
@@ -330,7 +343,8 @@ environment or the key file, and never logged, printed, or included in an error
 message — error text is scrubbed of it on the way out.
 
 A prompt is scored once. Results are cached by content hash, so unchanged text is
-never re-sent.
+never re-sent. The exception is a follow-up in `always` mode, which is scored
+fresh each time because its context differs.
 
 ## Backfill
 

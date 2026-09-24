@@ -43,9 +43,20 @@ export function clampPrompt(text: string): string {
   return `${text.slice(0, MAX_PROMPT_CHARS - 1000)}\n…\n${text.slice(-1000)}`;
 }
 
-function questionsFor(id: string): Record<string, NoulQuestion> {
+/**
+ * @param contextIds Earlier messages from the same session that are in the
+ *   state as background. Only `id` is judged; what the context already told
+ *   the agent counts as known.
+ */
+function questionsFor(id: string, contextIds: string[] = []): Record<string, NoulQuestion> {
   const questions: Record<string, NoulQuestion> = {};
-  const scope = `Consider only the message with id "${id}" in the state.`;
+  const scope = contextIds.length
+    ? `Judge only the message with id "${id}" in the state. The messages ${contextIds
+        .map((c) => `"${c}"`)
+        .join(
+          ' and ',
+        )} are earlier prompts from the same conversation, given as context: anything they already state counts as known to the reader of "${id}", but they are not themselves being judged.`
+    : `Consider only the message with id "${id}" in the state.`;
   for (const gate of GATES) {
     questions[`${id}__${gate.id}`] = {
       type: 'noul',
@@ -208,17 +219,30 @@ export async function scoreMany(inputs: ScoreInput[], options: ScoreRunOptions =
   );
 }
 
-/** Score a single prompt. Used by /jevpromptcoach:score and by `always` mode. */
+/**
+ * Score a single prompt. Used by /jevpromptcoach:score and by `always` mode.
+ *
+ * `context` is earlier prompts from the same session, oldest first, already
+ * through the configured privacy level. They are sent but not scored.
+ */
 export async function scoreOne(
   text: string,
   hash: string,
-  options: { timeoutMs?: number; inlineSafe?: boolean } = {},
+  options: { timeoutMs?: number; inlineSafe?: boolean; context?: string[] } = {},
 ): Promise<{ record: ScoreRecord; result: PromptScore } | null> {
-  const answers = await tryAsk({ messages: [{ id: 'm0', text: clampPrompt(text) }] }, questionsFor('m0'), {
-    timeoutMs: options.timeoutMs ?? 20_000,
-  });
+  const context = (options.context ?? []).map((t, i) => ({ id: `c${i + 1}`, text: clampPrompt(t) }));
+  const state = { messages: [...context, { id: 'm0', text: clampPrompt(text) }] };
+  const answers = await tryAsk(
+    state,
+    questionsFor(
+      'm0',
+      context.map((c) => c.id),
+    ),
+    { timeoutMs: options.timeoutMs ?? 20_000 },
+  );
   if (!answers) return null;
 
   const record = unpack(answers, 'm0', hash, new Date().toISOString());
+  if (context.length) record.context = context.length;
   return { record, result: interpret(hash, record.probabilities, record.gates, options) };
 }

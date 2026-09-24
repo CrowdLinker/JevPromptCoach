@@ -4,14 +4,14 @@ import {
   skipReason
 } from "./chunk-F3M3WE3B.js";
 import {
-  applyPrivacy
-} from "./chunk-VM4R2HGT.js";
-import {
   appendLog
-} from "./chunk-RC2GUYJC.js";
+} from "./chunk-HXIO5BL2.js";
 import {
   loadConfig
-} from "./chunk-JBKH57J6.js";
+} from "./chunk-7PP552KK.js";
+import {
+  applyPrivacy
+} from "./chunk-VM4R2HGT.js";
 
 // src/hook.ts
 import { readFileSync } from "node:fs";
@@ -52,8 +52,8 @@ async function main() {
   }
   if (config.mode !== "always") return;
   if (stored === null) return;
-  const { runInline } = await import("./inline-4KJUBKYU.js");
-  const line = await runInline(stored, hash, config);
+  const { runInline } = await import("./inline-STU2ZBEP.js");
+  const line = await runInline(stored, hash, config, { session: entry.session, ts: entry.ts });
   if (line) emitLine(line);
 }
 main().then(

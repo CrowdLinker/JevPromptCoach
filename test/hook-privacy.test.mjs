@@ -13,6 +13,7 @@ import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { spawn } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -26,6 +27,8 @@ const PROMPT = `Deploy with ${SECRET} from /Users/someone/clients/acme/app/main.
 let server;
 let captured;
 let port;
+/** What the capture server answers for each question id. */
+let answerFor = () => 0.01;
 
 before(async () => {
   captured = [];
@@ -42,7 +45,7 @@ before(async () => {
       }
       const parsed = JSON.parse(body);
       const answers = {};
-      for (const k of Object.keys(parsed.questions ?? {})) answers[k] = { type: 'noul', noul: 0.01 };
+      for (const k of Object.keys(parsed.questions ?? {})) answers[k] = { type: 'noul', noul: answerFor(k) };
       res.writeHead(200, { 'content-type': 'application/json' });
       res.end(JSON.stringify({ model: 'test', answers, usage: { input_tokens: 1, output_tokens: 0 } }));
     });
@@ -58,16 +61,34 @@ after(() => server?.close());
  * spawn would block the event loop and the server could never accept the
  * hook's connection.
  */
-function runHook(privacy, prompt = PROMPT) {
+function runHook(privacy, prompt = PROMPT, { log = [], scores = [], env = {} } = {}) {
   const home = mkdtempSync(join(tmpdir(), 'jpc-test-'));
   mkdirSync(join(home, '.claude', 'jevpromptcoach'), { recursive: true });
+  if (log.length) {
+    writeFileSync(
+      join(home, '.claude', 'jevpromptcoach', 'prompts.jsonl'),
+      log.map((e) => JSON.stringify({ features: {}, source: 'hook', ...e })).join('\n') + '\n',
+    );
+  }
+  if (scores.length) {
+    writeFileSync(
+      join(home, '.claude', 'jevpromptcoach', 'scores.jsonl'),
+      scores.map((r) => JSON.stringify(r)).join('\n') + '\n',
+    );
+  }
   writeFileSync(join(home, '.claude', 'jevpromptcoach', '.env'), 'TYPESAFE_API_KEY=not-a-real-key\n');
   writeFileSync(
     join(home, '.claude', 'jevpromptcoach', 'config.json'),
     JSON.stringify({ mode: 'always', privacy, setupComplete: true, alwaysTimeoutMs: 8000, bypassPrefix: '*' }),
   );
   const child = spawn(process.execPath, ['dist/hook.js'], {
-    env: { ...process.env, HOME: home, TYPESAFE_BASE_URL: `http://127.0.0.1:${port}` },
+    env: {
+      ...process.env,
+      JEVPROMPTCOACH_SESSION_CONTEXT: '',
+      ...env,
+      HOME: home,
+      TYPESAFE_BASE_URL: `http://127.0.0.1:${port}`,
+    },
   });
   let stdout = '';
   child.stdout.on('data', (c) => {
@@ -93,6 +114,134 @@ test('always mode sends the redacted prompt, never the raw one', async () => {
   assert.ok(!sent.includes('bob@acme.com'), 'the email reached the wire');
   assert.ok(!sent.includes('clients/acme'), 'the client path reached the wire');
   assert.ok(sent.includes('main.ts'), 'the filename should survive redaction');
+});
+
+/** The cache key the hook computes, mirrored from src/hash.ts. */
+const hashOf = (text) => createHash('sha256').update(text.trim(), 'utf8').digest('hex').slice(0, 16);
+const FOLLOW_UP = 'Now commit and push all of it';
+const savedScore = (extra = {}) => ({
+  hash: hashOf(FOLLOW_UP),
+  ts: '2026-01-01T00:00:00.000Z',
+  probabilities: { named_target: 0.99 },
+  gates: {},
+  model: 'test',
+  ...extra,
+});
+
+/**
+ * A follow-up carries the two prompts before it in the same session. They are
+ * written to the log as raw text, as if captured under `raw`, so the test also
+ * proves they are redacted again on the way out under `redact`.
+ */
+const EARLIER = [
+  { ts: '2026-01-01T00:00:00.000Z', session: 's', hash: 'h0', text: 'oldest prompt, beyond the window' },
+  { ts: '2026-01-01T00:01:00.000Z', session: 'other', hash: 'hx', text: 'a prompt from another session' },
+  { ts: '2026-01-01T00:02:00.000Z', session: 's', hash: 'h1', text: `Mail bob@acme.com about ${SECRET}` },
+  { ts: '2026-01-01T00:03:00.000Z', session: 's', hash: 'h2', text: 'Open /Users/someone/clients/acme/app/main.ts' },
+];
+
+test('a follow-up sends the two earlier prompts, redacted, and scores only the last', async () => {
+  captured.length = 0;
+  const result = await runHook('redact', FOLLOW_UP, { log: EARLIER });
+  assert.equal(result.status, 0);
+  assert.equal(captured.length, 1);
+
+  const { state, questions } = captured[0];
+  const texts = state.messages.map((m) => m.text);
+  assert.equal(texts.length, 3, 'two context prompts plus the one being scored');
+  assert.equal(state.messages.at(-1).id, 'm0');
+  assert.equal(texts.at(-1), FOLLOW_UP);
+  assert.ok(!texts.some((t) => t.includes('oldest') || t.includes('another session')));
+
+  const sent = JSON.stringify(captured[0]);
+  assert.ok(!sent.includes(SECRET), 'a context prompt leaked the API key');
+  assert.ok(!sent.includes('bob@acme.com'), 'a context prompt leaked the email');
+  assert.ok(!sent.includes('clients/acme'), 'a context prompt leaked the client path');
+  assert.ok(sent.includes('main.ts'));
+
+  assert.ok(
+    Object.keys(questions).every((k) => k.startsWith('m0__')),
+    'context prompts must not be scored',
+  );
+});
+
+test('the first prompt of a session is scored on its own', async () => {
+  captured.length = 0;
+  const log = EARLIER.filter((e) => e.session === 'other');
+  await runHook('redact', FOLLOW_UP, { log });
+  assert.equal(captured[0].state.messages.length, 1);
+});
+
+test('JEVPROMPTCOACH_SESSION_CONTEXT=0 turns the context off', async () => {
+  captured.length = 0;
+  await runHook('redact', FOLLOW_UP, {
+    log: EARLIER,
+    env: { JEVPROMPTCOACH_SESSION_CONTEXT: '0' },
+  });
+  assert.equal(captured[0].state.messages.length, 1);
+});
+
+test('a first prompt is not served a score that depended on context', async () => {
+  captured.length = 0;
+  await runHook('redact', FOLLOW_UP, { scores: [savedScore({ context: 2 })] });
+  assert.equal(captured.length, 1, 'expected a fresh request, not the context-based saved score');
+});
+
+test('a first prompt is served a saved standalone score', async () => {
+  captured.length = 0;
+  await runHook('redact', FOLLOW_UP, { scores: [savedScore()] });
+  assert.equal(captured.length, 0, 'unchanged text scored alone should come from the cache');
+});
+
+test('a later score with context does not displace a saved standalone score', async () => {
+  captured.length = 0;
+  const later = savedScore({ ts: '2026-01-02T00:00:00.000Z', context: 2 });
+  await runHook('redact', FOLLOW_UP, { scores: [savedScore(), later] });
+  assert.equal(captured.length, 0, 'the standalone score should still be served from the cache');
+});
+
+test('a follow-up is scored fresh even when the same text was saved alone', async () => {
+  captured.length = 0;
+  await runHook('redact', FOLLOW_UP, { log: EARLIER, scores: [savedScore()] });
+  assert.equal(captured.length, 1, 'expected a fresh request with context');
+  assert.equal(captured[0].state.messages.length, 3);
+});
+
+test('/jevpromptcoach:score ignores a saved score that depended on context', async () => {
+  captured.length = 0;
+  const home = mkdtempSync(join(tmpdir(), 'jpc-test-'));
+  const dir = join(home, '.claude', 'jevpromptcoach');
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, '.env'), 'TYPESAFE_API_KEY=not-a-real-key\n');
+  writeFileSync(join(dir, 'scores.jsonl'), JSON.stringify(savedScore({ context: 2 })) + '\n');
+  const child = spawn(process.execPath, ['dist/cli.js', 'score', FOLLOW_UP], {
+    env: { ...process.env, HOME: home, TYPESAFE_BASE_URL: `http://127.0.0.1:${port}` },
+  });
+  let stdout = '';
+  child.stdout.on('data', (c) => {
+    stdout += c;
+  });
+  await new Promise((resolve) => child.on('close', resolve));
+  rmSync(home, { recursive: true, force: true });
+  assert.equal(captured.length, 1, 'expected a fresh request, not the context-based saved score');
+  assert.ok(!stdout.includes('(cached'), stdout);
+});
+
+test('a score of 0 is not shown, only what is missing', async () => {
+  answerFor = () => 0.01;
+  const { systemMessage } = JSON.parse((await runHook('redact')).stdout);
+  assert.ok(!systemMessage.includes('/100'), systemMessage);
+  assert.match(systemMessage, /^Jev \(Prompt Coach\)\nMissing: /);
+});
+
+test('a score above 0 is shown', async () => {
+  answerFor = (k) => (k.endsWith('__named_target') ? 0.99 : 0.01);
+  try {
+    const { systemMessage } = JSON.parse((await runHook('redact')).stdout);
+    assert.match(systemMessage, /^Jev \(Prompt Coach\) - \d+\/100\nMissing: /);
+  } finally {
+    answerFor = () => 0.01;
+  }
 });
 
 test('metadata_only sends nothing at all', async () => {
