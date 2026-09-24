@@ -727,12 +727,13 @@ async function cmdConversationFixturesInit(argv) {
   const picked = sampleByLength([...candidates.values()], (c) => c.text.length, count);
   const fixtures = picked.map((c, i) => ({
     id: `c${String(i).padStart(2, "0")}`,
-    // Redacted before the reply is clamped, as the live path does.
+    // Redacted, then clamped exactly as the scorer clamps, so the person
+    // labelling sees what Jev sees and no more.
     context: c.context.map((turn) => ({
       role: turn.role,
-      text: turn.role === "agent" ? clampReply(redact(turn.text)) : redact(turn.text)
+      text: turn.role === "agent" ? clampReply(redact(turn.text)) : clampPrompt(redact(turn.text))
     })),
-    text: redact(c.text),
+    text: clampPrompt(redact(c.text)),
     labels: Object.fromEntries(CHECKS.map((check) => [check.id, null])),
     gates: Object.fromEntries(GATES.map((g) => [g.id, null]))
   }));

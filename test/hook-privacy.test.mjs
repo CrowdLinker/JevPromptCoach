@@ -14,7 +14,7 @@ import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -594,6 +594,43 @@ test('a score above 0 is shown', async () => {
   } finally {
     answerFor = () => 0.01;
   }
+});
+
+test('conversation fixtures hold what the scorer sees, redacted then clamped', async () => {
+  const home = mkdtempSync(join(tmpdir(), 'jpc-test-'));
+  const project = join(home, '.claude', 'projects', 'demo');
+  mkdirSync(project, { recursive: true });
+  mkdirSync(join(home, '.claude', 'jevpromptcoach'), { recursive: true });
+  const long = 'Connect with ' + 'x'.repeat(2_967) + ' ' + STRADDLE_URL + ' ' + 'y'.repeat(6_000);
+  const transcript = [
+    say('user', long),
+    say('assistant', text('w'.repeat(3_000) + ' connected, want me to commit?')),
+    say('user', 'Yes please, commit and push it'),
+    say('assistant', text('pushed')),
+  ];
+  writeFileSync(join(project, 's.jsonl'), transcript.map((r) => JSON.stringify(r)).join('\n') + '\n');
+  const out = join(home, 'conversations.json');
+  await new Promise((resolve) => {
+    const child = spawn(
+      process.execPath,
+      ['dist/cli.js', 'fixtures-init', '--conversations', '--count=1', `--out=${out}`],
+      {
+        env: { ...process.env, HOME: home },
+        stdio: 'ignore',
+      },
+    );
+    child.on('close', resolve);
+  });
+  const [fixture] = JSON.parse(readFileSync(out, 'utf8'));
+  rmSync(home, { recursive: true, force: true });
+  const [prompt, reply] = fixture.context;
+  // clampPrompt keeps 3,000 characters, a three-character marker, then 1,000.
+  assert.ok(prompt.text.length <= 4_003, `prompt turn is ${prompt.text.length} characters, more than the scorer sends`);
+  assert.ok(reply.text.length <= 1_500, `reply turn is ${reply.text.length} characters`);
+  assert.ok(
+    !JSON.stringify(fixture).includes(STRADDLE_SECRET.slice(0, 6)),
+    'a fragment of the password is in the fixture',
+  );
 });
 
 test('metadata_only sends nothing at all', async () => {
