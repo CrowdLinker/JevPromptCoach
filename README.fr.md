@@ -265,9 +265,14 @@ quitte votre machine en dehors d'une commande que vous avez lancée.
 | `raw` | Le texte tel qu'écrit. Les chaînes en forme d'identifiant sont **quand même** retirées. |
 
 Retiré à tous les niveaux, y compris `raw` : `sk-`, `sk-ant-`, `sk-proj-`,
-`ghp_` et apparentés, `AKIA`/`ASIA`, `AIza`, les `xox*` de Slack, les JWT, les
-blocs PEM, les secrets clients Azure, les jetons `Bearer`, et tout ce qui est
-assigné à un nom finissant par `KEY`/`TOKEN`/`SECRET`/`PASSWORD`.
+`ghp_` et apparentés, `github_pat_`, `AKIA`/`ASIA`, `AIza`, les `xox*` de Slack,
+Stripe `sk_live_`/`rk_live_`, `npm_`, SendGrid `SG.`, les URL de webhook Slack et
+Discord, les JWT, les blocs PEM, les secrets clients et signatures SAS Azure, les
+jetons `Bearer`, le mot de passe de toute URL `schéma://utilisateur:motdepasse@hôte`,
+tout ce qui est étiqueté `password`, et tout ce qui est assigné à un nom
+finissant par `KEY`/`TOKEN`/`SECRET`/`PASSWORD` ou `_PASS`/`_PWD`/`_AUTH`. Un
+secret sans préfixe connu ni étiquette ressemble à un hash de commit et n'est pas
+retiré.
 
 **Ce qui est envoyé, et quand :**
 

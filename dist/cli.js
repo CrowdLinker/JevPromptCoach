@@ -41,7 +41,7 @@ import {
 } from "./chunk-2ZQCJBWZ.js";
 import {
   applyPrivacy
-} from "./chunk-VM4R2HGT.js";
+} from "./chunk-VFFPDUVA.js";
 
 // src/cli.ts
 import { readFileSync, writeFileSync } from "node:fs";

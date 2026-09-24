@@ -24,6 +24,26 @@ const CREDENTIAL_RULES: Rule[] = [
   { name: 'aws', pattern: /\b(?:AKIA|ASIA)[A-Z0-9]{16}\b/g, replace: '[KEY]' },
   { name: 'google', pattern: /\bAIza[A-Za-z0-9_-]{30,}/g, replace: '[KEY]' },
   { name: 'slack', pattern: /\bxox[abprs]-[A-Za-z0-9-]{10,}/g, replace: '[KEY]' },
+  { name: 'stripe', pattern: /\b[sr]k_(?:live|test)_[A-Za-z0-9]{16,}/g, replace: '[KEY]' },
+  { name: 'npm', pattern: /\bnpm_[A-Za-z0-9]{30,}/g, replace: '[KEY]' },
+  { name: 'github-fine-grained', pattern: /\bgithub_pat_[A-Za-z0-9_]{22,}/g, replace: '[KEY]' },
+  { name: 'sendgrid', pattern: /\bSG\.[A-Za-z0-9_-]{16,}\.[A-Za-z0-9_-]{16,}/g, replace: '[KEY]' },
+  {
+    name: 'webhook-url',
+    // The URL is the credential: anyone holding it can post to the channel.
+    pattern: /https:\/\/(?:hooks\.slack\.com\/services|discord(?:app)?\.com\/api\/webhooks)\/[^\s'"`)\]]+/g,
+    replace: '[WEBHOOK]',
+  },
+  {
+    name: 'url-credentials',
+    // scheme://user:password@host. Agent replies quote connection strings
+    // back from .env files and config; the user and host are kept, the
+    // password is not. Runs before the email rule, which would otherwise
+    // swallow "password@host" by accident and leave the next one in place.
+    pattern: /\b([a-z][a-z0-9+.-]*:\/\/[^\s:/@'"`]+:)[^\s@/'"`]+@/gi,
+    replace: '$1[REDACTED]@',
+  },
+  { name: 'azure-sas', pattern: /([?&]sig=)[A-Za-z0-9%+/=]{16,}/g, replace: '$1[REDACTED]' },
   { name: 'jwt', pattern: /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/g, replace: '[JWT]' },
   { name: 'bearer', pattern: /\b[Bb]earer\s+[A-Za-z0-9._-]{12,}/g, replace: 'Bearer [KEY]' },
   {
@@ -40,14 +60,24 @@ const CREDENTIAL_RULES: Rule[] = [
     // The separator must be ':', '=' or a spaced hyphen, and the value may not
     // contain '/', so a path like secret-client/app/main.ts is not a match.
     pattern:
-      /\b(value|secret|password|passwd|token|api[ _-]?key|client[ _-]?secret)\b\s*(?::|=|-\s)\s*(['"`]?)([^\s'"`,;/\\]{12,})\2/gi,
+      /\b(value|secret|password|passwd|token|api[ _-]?key|client[ _-]?secret)\b['"]?\s*(?::|=|-\s)\s*(['"`]?)([^\s'"`,;/\\]{12,})\2/gi,
     replace: (m: string) => m.replace(/((?::|=|-\s)\s*['"`]?)([^\s'"`,;/\\]{12,})/, '$1[REDACTED]'),
   },
   {
+    name: 'labelled-password',
+    // Passwords are short more often than keys are, so the length floor is
+    // lower than for the generic labels above; the label itself is specific.
+    // The optional quote after the label covers a JSON key: "password": "x".
+    pattern: /\b(password|passwd|pwd)\b['"]?\s*[:=]\s*(['"`]?)([^\s'"`,;]{6,})\2/gi,
+    replace: (m: string) => m.replace(/([:=]\s*['"`]?)([^\s'"`,;]{6,})/, '$1[REDACTED]'),
+  },
+  {
     name: 'assigned-secret',
-    // KEY=value / "api_key": "value" / TOKEN: value
+    // KEY=value / "api_key": "value" / TOKEN: value / DB_PASS=value. The short
+    // suffixes need an underscore before them, so bypass: or oauth: in code is
+    // not taken for a secret.
     pattern:
-      /\b([A-Za-z_][A-Za-z0-9_]*(?:KEY|TOKEN|SECRET|PASSWORD|PASSWD|CREDENTIAL)S?)\b(\s*[:=]\s*)(['"]?)([^\s'"`,;]{6,})\3/gi,
+      /\b([A-Za-z_][A-Za-z0-9_]*(?:KEY|TOKEN|SECRET|PASSWORD|PASSWD|CREDENTIAL)S?|(?:[A-Za-z0-9]+_)+(?:PASS|PWD|AUTH))\b(\s*[:=]\s*)(['"]?)([^\s'"`,;]{6,})\3/gi,
     replace: (m: string) => m.replace(/([:=]\s*['"]?)([^\s'"`,;]{6,})/, '$1[REDACTED]'),
   },
 ];

@@ -256,9 +256,13 @@ de tu máquina salvo durante un comando que tú hayas ejecutado.
 | `raw` | El texto tal cual. Las cadenas con forma de credencial se eliminan **igualmente**. |
 
 Se eliminan en todos los niveles, incluido `raw`: `sk-`, `sk-ant-`, `sk-proj-`,
-`ghp_` y similares, `AKIA`/`ASIA`, `AIza`, los `xox*` de Slack, JWT, bloques
-PEM, secretos de cliente de Azure, tokens `Bearer`, y cualquier cosa asignada a
-un nombre que acabe en `KEY`/`TOKEN`/`SECRET`/`PASSWORD`.
+`ghp_` y similares, `github_pat_`, `AKIA`/`ASIA`, `AIza`, los `xox*` de Slack,
+Stripe `sk_live_`/`rk_live_`, `npm_`, SendGrid `SG.`, URL de webhooks de Slack y
+Discord, JWT, bloques PEM, secretos de cliente y firmas SAS de Azure, tokens
+`Bearer`, la contraseña de cualquier URL `esquema://usuario:contraseña@host`,
+todo lo etiquetado como `password`, y cualquier cosa asignada a un nombre que
+acabe en `KEY`/`TOKEN`/`SECRET`/`PASSWORD` o `_PASS`/`_PWD`/`_AUTH`. Un secreto
+sin prefijo conocido ni etiqueta parece un hash de commit y no se elimina.
 
 **Qué se envía exactamente, y cuándo:**
 

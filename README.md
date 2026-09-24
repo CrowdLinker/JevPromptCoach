@@ -337,9 +337,18 @@ your machine except during a command you ran.
 | `raw` | Prompt text as written. Credential-shaped strings are **still** stripped. |
 
 Stripped at every level, including `raw`: `sk-`, `sk-ant-`, `sk-proj-`, `ghp_`
-and friends, `AKIA`/`ASIA`, `AIza`, Slack `xox*`, JWTs, PEM blocks, Azure client
-secrets, `Bearer` tokens, and anything assigned to a name ending in
-`KEY`/`TOKEN`/`SECRET`/`PASSWORD`.
+and friends, `github_pat_`, `AKIA`/`ASIA`, `AIza`, Slack `xox*`, Stripe
+`sk_live_`/`rk_live_`, `npm_`, SendGrid `SG.`, Slack and Discord webhook URLs,
+JWTs, PEM blocks, Azure client secrets and SAS signatures, `Bearer` tokens, the
+password in any `scheme://user:password@host` URL, anything labelled `password`
+(JSON keys included), and anything assigned to a name ending in
+`KEY`/`TOKEN`/`SECRET`/`PASSWORD` or `_PASS`/`_PWD`/`_AUTH`.
+
+Redaction works by shape, and that has a limit: a secret with no known prefix
+and no label, such as a bare hex token in a sentence, looks exactly like a
+commit hash or an id, and is not removed. That matters most for Claude's
+replies, which can quote command output back; it is one reason replies are
+opt-in.
 
 **Exactly what is sent, and when:**
 

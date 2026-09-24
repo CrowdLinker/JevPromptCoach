@@ -38,6 +38,30 @@ const SECRETS = [
     j('eyJhbGciOiJIUzI1NiJ9', '.', 'eyJzdWIiOiIxMjM0NTY3ODkwIn0', '.', 'dBjftJeZ4CVPmB92K27uhbUJU1p1r'),
     'dBjftJeZ4CVPmB92K27uhbUJU1p1r',
   ],
+  // Shapes an agent's reply quotes back from .env files, config and command output.
+  ['stripe', j('key ', 'sk_', 'live_', '51HxYzAbCdEfGhIjKlMnOp'), '51HxYzAbCdEfGhIjKlMnOp'],
+  ['stripe-restricted', j('rk_', 'test_', '51HxYzAbCdEfGhIjKlMnOp'), '51HxYzAbCdEfGhIjKlMnOp'],
+  ['npm', j('npm', '_', 'AbCdEfGhIjKlMnOpQrStUvWxYz0123456789'), 'AbCdEfGhIjKlMnOpQrStUvWxYz0123456789'],
+  [
+    'github-fine-grained',
+    j('github_', 'pat_', '11ABCDEFG0123456789_abcdefghijklmnopqrstuvwxyz'),
+    '11ABCDEFG0123456789_abcdefghijklmnopqrstuvwxyz',
+  ],
+  [
+    'sendgrid',
+    j('SG', '.', 'abcdefghijklmnopqrstuv', '.', 'abcdefghijklmnopqrstuvwxyz0123'),
+    'abcdefghijklmnopqrstuvwxyz0123',
+  ],
+  ['slack-webhook', j('https://hooks.', 'slack.com/services/', 'T0000/B0000/', 'XXXXXXXXXXXXXXXX'), 'XXXXXXXXXXXXXXXX'],
+  ['url-credentials', j('connect with mysql://root:', 's3cretPw9', '@10.0.0.4/app'), 's3cretPw9'],
+  ['url-credentials-in-env', j('DATABASE_URL=postgres://app:', 'Hunter2pass', '@db.internal:5432/prod'), 'Hunter2pass'],
+  [
+    'azure-sas',
+    j('https://acct.blob.core.windows.net/c/f?sv=2022&', 'sig=', 'AbCdEfGhIjKlMnOp%2BqRsT%3D'),
+    'AbCdEfGhIjKlMnOp',
+  ],
+  ['underscored-pass', j('DB_', 'PASS', '=', 'abcDEF123456'), 'abcDEF123456'],
+  ['json-password', j('{"pass', 'word": "', 'CorrectHorse99', '"}'), 'CorrectHorse99'],
 ];
 
 test('every credential shape is removed by redact()', () => {
@@ -92,6 +116,12 @@ test('ordinary prose and code are left alone', () => {
     'Run npm test -- auth.spec.ts to check it',
     'The commit is 4f3a9c2e1b8d7a6f5e4d3c2b1a0987654321fedc',
     'See https://github.com/CrowdLinker/JevPromptCoach for details',
+    // Code and prose that share words with the credential rules.
+    'const bypass = userSettings.bypassPrefix',
+    'oauth: googleOauthClient, author: someoneElse',
+    'Run pwd to see the directory, then reset the password field on the form',
+    'The value: 3 and the token count are both logged',
+    'Open https://example.com/login?next=/dashboard&sig=short',
   ];
   for (const s of samples) {
     const out = redact(s);
