@@ -7,7 +7,7 @@ import { type Config, sessionContextEnabled, sessionRepliesEnabled } from './con
 import { recentTurns, type Turn } from './conversation.js';
 import { appendScores, readScores, recentSessionPrompts } from './log.js';
 import { applyPrivacy } from './redact.js';
-import { interpret, type PromptScore, scoreOne } from './score.js';
+import { clampPrompt, interpret, type PromptScore, scoreOne } from './score.js';
 
 /** Earlier prompts from the session sent with a follow-up. */
 const CONTEXT_PROMPTS = 2;
@@ -57,15 +57,22 @@ const NO_CONTEXT: SessionContext = { prompts: [], conversation: [] };
  */
 function sessionContext(config: Config, at: InlineAt): SessionContext {
   if (at.session === 'unknown' || !sessionContextEnabled()) return NO_CONTEXT;
-  try {
-    if (sessionRepliesEnabled() && at.transcriptPath) {
+  // Clamped before redaction, so a huge earlier paste costs no more to redact
+  // than the prompt itself; the scorer would clamp it to this size anyway.
+  const safe = (text: string): string | null => applyPrivacy(clampPrompt(text), config.privacy).text;
+  if (sessionRepliesEnabled() && at.transcriptPath) {
+    try {
       const conversation = recentTurns(at.transcriptPath, at.promptKey, CONTEXT_EXCHANGES, config.bypassPrefix)
-        .map((turn) => ({ role: turn.role, text: applyPrivacy(turn.text, config.privacy).text }))
+        .map((turn) => ({ role: turn.role, text: safe(turn.text) }))
         .filter((turn): turn is Turn => turn.text !== null);
       return { prompts: [], conversation };
+    } catch {
+      /* transcript unreadable: fall back to the earlier prompts in the log */
     }
+  }
+  try {
     const prompts = recentSessionPrompts(at.session, at.ts, CONTEXT_PROMPTS)
-      .map((entry) => (entry.text === null ? null : applyPrivacy(entry.text, config.privacy).text))
+      .map((entry) => (entry.text === null ? null : safe(entry.text)))
       .filter((text): text is string => text !== null);
     return { prompts, conversation: [] };
   } catch {

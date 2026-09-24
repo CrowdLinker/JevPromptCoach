@@ -1,29 +1,29 @@
 Gates
   gate                 acc   n
   is_bug_report        0.97  40
-  is_large_change      0.90  40
+  is_large_change      0.88  40
 
 Checks — FAIL is the class that gates `always` mode
 
   check                 thr | fail-P fail-R  n | pass-P pass-R  n | verdict
-  named_target         0.15 |   1.00   0.09 11 |   0.74   1.00 29 | ok
-  success_condition    0.20 |   1.00   0.17 18 |   0.59   1.00 22 | ok
-  bounded_scope        0.45 |   0.20   0.50  2 |   0.97   0.89 38 | too few fail cases (n=2) — not measurable
-  constraints          0.80 |   0.97   1.00 34 |   1.00   0.83  6 | ok
-  repro_included       0.40 |   0.50   1.00  1 |   1.00   0.50  2 | too few fail cases (n=1) — not measurable
-  plan_first           0.35 |   1.00   1.00  4 |   1.00   1.00  2 | too few fail cases (n=4) — not measurable
-  verification         0.75 |   0.97   0.97 38 |   0.50   0.50  2 | ok
+  named_target         0.15 |   1.00   0.18 11 |   0.76   1.00 29 | ok  (best thr 0.15)
+  success_condition    0.20 |   1.00   0.11 18 |   0.58   1.00 22 | ok  (best thr 0.25)
+  bounded_scope        0.45 |   0.29   1.00  2 |   1.00   0.87 38 | too few fail cases (n=2) — not measurable  (best thr 0.45)
+  constraints          0.80 |   0.97   1.00 34 |   1.00   0.83  6 | ok  (best thr 0.75)
+  repro_included       0.40 |   0.50   1.00  1 |   1.00   0.50  2 | too few fail cases (n=1) — not measurable  (best thr 0.4)
+  plan_first           0.35 |   1.00   1.00  4 |   1.00   1.00  2 | too few fail cases (n=4) — not measurable  (best thr 0.35)
+  verification         0.75 |   0.97   0.95 38 |   0.33   0.50  2 | ok  (best thr 0.75)
 
 Five-fold cross-validated fail-precision (thresholds re-selected per fold)
 
   check                 fail-P fail-R  n
-  named_target           0.60   0.27 11
+  named_target           0.67   0.36 11
   success_condition      0.75   0.17 18
-  bounded_scope          0.25   0.50  2
-  constraints            0.97   0.97 34
+  bounded_scope          0.33   0.50  2
+  constraints            0.97   1.00 34
   repro_included         1.00   1.00  1
   plan_first             1.00   0.75  4
-  verification           0.97   0.97 38
+  verification           0.97   0.95 38
 
-Input tokens: 111,831  (~$0.0047)
+Input tokens: 111,736  (~$0.0047)
 All measurable checks clear fail-precision 0.9.

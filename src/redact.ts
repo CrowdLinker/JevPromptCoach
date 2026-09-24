@@ -40,7 +40,11 @@ const CREDENTIAL_RULES: Rule[] = [
     // back from .env files and config; the user and host are kept, the
     // password is not. Runs before the email rule, which would otherwise
     // swallow "password@host" by accident and leave the next one in place.
-    pattern: /\b([a-z][a-z0-9+.-]*:\/\/[^\s:/@'"`]+:)[^\s@/'"`]+@/gi,
+    // The user may be empty (redis://:pw@host), and the password may hold '@'
+    // or '/': it runs lazily to the last '@' before a host. A port followed by
+    // a path (host:8080/@handle) is not a password.
+    pattern:
+      /\b([a-z][a-z0-9+.-]{0,30}:\/\/[^\s:/@'"`]{0,256}:)(?!\d{1,5}(?:\/|$))[^\s'"`]{1,256}?@(?=[^\s@/'"`]{1,256}(?:[\s/'"`:?#]|$))/gi,
     replace: '$1[REDACTED]@',
   },
   { name: 'azure-sas', pattern: /([?&]sig=)[A-Za-z0-9%+/=]{16,}/g, replace: '$1[REDACTED]' },
@@ -51,7 +55,8 @@ const CREDENTIAL_RULES: Rule[] = [
     // Azure client secrets carry a '~' mid-token, which is vanishingly rare in
     // prose, code identifiers and paths. Found in real local history, where it
     // was written as "value - <secret>" and matched no labelled rule below.
-    pattern: /(?<![\w~/])[A-Za-z0-9_.-]{4,}~[A-Za-z0-9_.~-]{12,}(?![\w])/g,
+    // Bounded: unbounded runs made a long line of dots or dashes quadratic.
+    pattern: /(?<![\w~/])[A-Za-z0-9_.-]{4,128}~[A-Za-z0-9_.~-]{12,256}(?![\w])/g,
     replace: '[KEY]',
   },
   {
@@ -86,45 +91,53 @@ const CREDENTIAL_RULES: Rule[] = [
     // Hashes, hex tokens and hex-encoded keys: 16 or more hex characters with a
     // digit among them. Commit SHAs go too; the marker still tells the scorer a
     // specific identifier was named. UUIDs survive: their hex runs are shorter.
-    // An 0x prefix is how hex private keys are usually written.
-    pattern: /(?<![\w-])(?:0x)?(?=[0-9a-f]*\d)[0-9a-f]{16,}(?![\w-])/gi,
+    // An 0x prefix is how hex private keys are usually written, and a hyphen
+    // before or after (token-<hex>) does not hide one.
+    pattern: /(?<!\w)(?:0x)?(?=[0-9a-f]{0,1024}\d)[0-9a-f]{16,1024}(?!\w)/gi,
     replace: '[HEX]',
   },
   {
     name: 'random-token',
     // A secret with no known prefix and no label. Last, so the named rules
-    // above get first say. See looksRandom for what separates it from a long
-    // identifier.
-    pattern: /(?<![\w/.~+=-])[A-Za-z0-9_+=-]{20,}(?![\w/.~+=-])/g,
-    replace: (m: string) => (m.split(/[-_+=]/).some(looksRandom) ? '[KEY]' : m),
+    // above get first say. '/' and '+' are allowed inside, as base64 secrets
+    // carry them; a path is rejected by its dot or by reading as words. Each
+    // chunk is judged, and so is the whole token with separators removed.
+    pattern: /(?<![\w/.~+=-])[A-Za-z0-9_+/=-]{20,1024}(?![\w/.~+=-])/g,
+    replace: (m: string) =>
+      m.split(/[-_+=/]/).some(looksRandom) || looksRandom(m.replace(/[-_+=/]/g, '')) ? '[KEY]' : m,
   },
 ];
 
 /**
- * Whether one chunk of a token reads as random rather than as words.
+ * Whether a string reads as random rather than as words.
  *
- * Measured on real prompts and agent replies before it was written: the long
- * mixed tokens there are mostly migration names (a CamelCase word and a
- * 13-digit timestamp), slugs and constant names, and all of them contain a run
- * of five or more lowercase letters. Keys and tokens rarely do, and they switch
- * between letters, digits and case constantly.
+ * Tuned by simulation and against real prompts and agent replies. Random
+ * base62 switches between digit, lowercase and uppercase at about 60% of
+ * positions; identifiers switch once per word. Words also give themselves away
+ * by their capitals: in CamelCase nearly every capital starts a word of three
+ * or more letters, in random text about one in five does. With a digit
+ * required as well, this catches about 92% of random 20-character tokens and
+ * over 97% from 32 up, while leaving migration names, slugs, constants and
+ * CamelCase identifiers alone. A random token with no digit at all is missed.
  */
-function looksRandom(chunk: string): boolean {
-  if (chunk.length < 16) return false;
-  if (/[a-z]{5,}/.test(chunk)) return false;
-  const digits = (chunk.match(/\d/g) ?? []).length;
-  const lower = (chunk.match(/[a-z]/g) ?? []).length;
-  const upper = (chunk.match(/[A-Z]/g) ?? []).length;
-  if (digits < 2 || lower < 2 || upper < 2) return false;
-  const kind = (c: string): number => (/\d/.test(c) ? 0 : /[a-z]/.test(c) ? 1 : 2);
+function looksRandom(s: string): boolean {
+  if (s.length < 16) return false;
+  const digits = (s.match(/\d/g) ?? []).length;
+  const lower = (s.match(/[a-z]/g) ?? []).length;
+  const upper = (s.match(/[A-Z]/g) ?? []).length;
+  if (digits < 1 || lower < 2 || upper < 2) return false;
+  const words = (s.match(/[A-Z][a-z]{2,}/g) ?? []).length;
+  if (words / upper >= 0.5) return false;
+  const kind = (c: string): number => (/\d/.test(c) ? 0 : /[a-z]/.test(c) ? 1 : /[A-Z]/.test(c) ? 2 : 3);
   let switches = 0;
-  for (let i = 1; i < chunk.length; i += 1) if (kind(chunk[i]!) !== kind(chunk[i - 1]!)) switches += 1;
-  return switches >= chunk.length / 3;
+  for (let i = 1; i < s.length; i += 1) if (kind(s[i]!) !== kind(s[i - 1]!)) switches += 1;
+  return switches / (s.length - 1) >= 0.4;
 }
 
 const EMAIL_RULE: Rule = {
   name: 'email',
-  pattern: /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g,
+  // Bounded to the RFC limits: unbounded runs made a long dotted line quadratic.
+  pattern: /\b[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9.-]{1,253}\.[A-Za-z]{2,63}\b/g,
   replace: '[EMAIL]',
 };
 
@@ -195,7 +208,9 @@ export function features(text: string): Features {
     words: text.trim().split(/\s+/).filter(Boolean).length,
     lines: text.split('\n').length,
     hasCodeFence: /```/.test(text),
-    hasFilePath: /[\w\-/]+\.[a-z]{1,5}\b/i.test(text),
+    // Anchored and bounded: unanchored, a long run of word characters made this
+    // quadratic, on every prompt the hook sees.
+    hasFilePath: /(?<![\w\-/])[\w\-/]{1,256}\.[a-z]{1,5}\b/i.test(text),
     hasQuestionMark: text.includes('?'),
     hasErrorWord: /\b(error|exception|traceback|failed|stack ?trace)\b/i.test(text),
   };

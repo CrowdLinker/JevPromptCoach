@@ -96,6 +96,9 @@ class ExchangeBuilder {
   add(record: TranscriptRecord): void {
     if (record.isSidechain) return;
     if (isHumanPrompt(record) || isQueuedPrompt(record)) {
+      // A prompt queued while the agent works on an excluded one inherits the
+      // exclusion: the text that follows still answers the excluded prompt.
+      const inheritsExclusion = isQueuedPrompt(record) && this.current?.excluded === true;
       this.close();
       const raw = textOf(record.message?.content);
       const prompt = stripPreamble(raw);
@@ -106,7 +109,7 @@ class ExchangeBuilder {
         reply: '',
         ts: record.timestamp ?? '',
         session: record.sessionId ?? '',
-        excluded: !prompt || (reason !== null && EXCLUDED.has(reason)),
+        excluded: inheritsExclusion || !prompt || (reason !== null && EXCLUDED.has(reason)),
       };
       return;
     }
@@ -121,7 +124,8 @@ class ExchangeBuilder {
     // follows the last one is the reply the developer answered. That holds
     // inside a record too, should one carry text and a tool call together.
     if (Array.isArray(content)) {
-      const lastToolUse = content.findLastIndex((b) => blockType(b) === 'tool_use');
+      // tool_use, server_tool_use (web search), mcp_tool_use and the like.
+      const lastToolUse = content.findLastIndex((b) => blockType(b)?.endsWith('tool_use') === true);
       if (lastToolUse >= 0) {
         this.parts = [];
         content = content.slice(lastToolUse + 1);

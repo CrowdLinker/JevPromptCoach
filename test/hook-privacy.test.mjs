@@ -61,7 +61,11 @@ after(() => server?.close());
  * spawn would block the event loop and the server could never accept the
  * hook's connection.
  */
-function runHook(privacy, prompt = PROMPT, { log = [], scores = [], env = {}, transcript = null } = {}) {
+function runHook(
+  privacy,
+  prompt = PROMPT,
+  { log = [], scores = [], env = {}, transcript = null, transcriptIsDirectory = false } = {},
+) {
   const home = mkdtempSync(join(tmpdir(), 'jpc-test-'));
   mkdirSync(join(home, '.claude', 'jevpromptcoach'), { recursive: true });
   if (log.length) {
@@ -71,7 +75,10 @@ function runHook(privacy, prompt = PROMPT, { log = [], scores = [], env = {}, tr
     );
   }
   let transcriptPath;
-  if (transcript) {
+  if (transcriptIsDirectory) {
+    transcriptPath = join(home, 'transcript-dir');
+    mkdirSync(transcriptPath);
+  } else if (transcript) {
     transcriptPath = join(home, 'transcript.jsonl');
     writeFileSync(transcriptPath, transcript.map((r) => JSON.stringify(r)).join('\n') + '\n');
   }
@@ -355,22 +362,17 @@ test('narration in the same record as a tool call is not sent', async () => {
   assert.ok(sent.includes('final answer about worker.ts'));
 });
 
-test('a queued prompt is its own exchange, and a bypassed one is dropped with its reply', async () => {
+test('a queued prompt is its own exchange', async () => {
   captured.length = 0;
   const transcript = [
     say('user', 'Refactor src/queue/worker.ts to back off exponentially'),
     say('assistant', text('first reply')),
-    say('user', '*queued note about the private client', { promptSource: 'queued' }),
-    say('assistant', text('reply that repeats the private client')),
     say('user', 'Also cap the delay at thirty seconds', { promptSource: 'queued' }),
     say('assistant', text('capped at 30s')),
   ];
   await runHook('redact', FOLLOW_UP, { transcript });
-  const { state } = captured[0];
-  const sent = JSON.stringify(state);
-  assert.ok(!sent.includes('private client'), 'a bypassed queued prompt or its reply reached the wire');
   assert.deepEqual(
-    state.messages.map((m) => m.text),
+    captured[0].state.messages.map((m) => m.text),
     [
       'Refactor src/queue/worker.ts to back off exponentially',
       'first reply',
@@ -379,6 +381,64 @@ test('a queued prompt is its own exchange, and a bypassed one is dropped with it
       FOLLOW_UP,
     ],
   );
+});
+
+test('a bypassed queued prompt is dropped with its reply, and so is anything queued behind it', async () => {
+  captured.length = 0;
+  const transcript = [
+    say('user', 'Refactor src/queue/worker.ts to back off exponentially'),
+    say('assistant', text('first reply')),
+    say('user', '*queued note about the private client', { promptSource: 'queued' }),
+    say('assistant', text('reply that repeats the private client')),
+    // Queued means the agent is still on the bypassed item; what follows answers it.
+    say('user', 'Also cap the delay at thirty seconds', { promptSource: 'queued' }),
+    say('assistant', text('capped, and the private client is set')),
+  ];
+  await runHook('redact', FOLLOW_UP, { transcript });
+  const { state } = captured[0];
+  assert.ok(!JSON.stringify(state).includes('private client'), 'a bypassed turn reached the wire');
+  assert.deepEqual(
+    state.messages.map((m) => m.text),
+    ['Refactor src/queue/worker.ts to back off exponentially', 'first reply', FOLLOW_UP],
+  );
+});
+
+test("a prompt queued during a bypassed turn does not carry that turn's reply", async () => {
+  captured.length = 0;
+  const transcript = [
+    say('user', '*SECRETPROMPT deploy with the private key'),
+    say('assistant', [{ type: 'tool_use', id: 'a1', name: 'Bash', input: {} }]),
+    say('user', 'also run the tests after', { promptSource: 'queued' }),
+    say('user', [{ type: 'tool_result', tool_use_id: 'a1', content: 'ok' }], { promptSource: undefined }),
+    say('assistant', text('Done, used SECRETPROMPT')),
+  ];
+  await runHook('redact', FOLLOW_UP, { transcript });
+  assert.ok(!JSON.stringify(captured[0]).includes('SECRETPROMPT'), 'the bypassed turn reached the wire');
+});
+
+test('narration before any kind of tool call is not sent', async () => {
+  captured.length = 0;
+  const transcript = [
+    say('user', 'Search the docs for the retry API in src/queue/worker.ts'),
+    say('assistant', [
+      { type: 'text', text: 'narration before the search' },
+      { type: 'server_tool_use', id: 's1', name: 'web_search', input: {} },
+    ]),
+    say('assistant', text('final answer')),
+  ];
+  await runHook('redact', FOLLOW_UP, { transcript });
+  const sent = JSON.stringify(captured[0]);
+  assert.ok(!sent.includes('narration before the search'));
+  assert.ok(sent.includes('final answer'));
+});
+
+test('an unreadable transcript falls back to the earlier prompts in the log', async () => {
+  captured.length = 0;
+  // A directory where the transcript should be: reading it throws.
+  await runHook('redact', FOLLOW_UP, { log: EARLIER, transcript: [], transcriptIsDirectory: true });
+  const { state } = captured[0];
+  assert.equal(state.messages.length, 3, 'two earlier prompts from the log, then the one being scored');
+  assert.ok(state.messages.every((m) => m.role === undefined));
 });
 
 test('text after a system or SDK message is not taken as a reply to the prompt before it', async () => {

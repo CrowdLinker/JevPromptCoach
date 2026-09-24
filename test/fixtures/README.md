@@ -15,7 +15,7 @@ prompt text in them.
 ```
 npm run build
 node dist/cli.js fixtures-init          # 40 prompts from your history, unlabelled
-node dist/cli.js fixtures-init --count 60 --out test/fixtures/prompts.json
+node dist/cli.js fixtures-init --count=60 --out=test/fixtures/prompts.json
 ```
 
 It reads `~/.claude/projects/**`, applies the same skip rules the plugin uses,
@@ -110,4 +110,4 @@ ten failing examples.
 
 Forty is enough to measure the common failures and thin for the rare ones. A
 check needs at least five failing examples to be measured at all and ten to be
-allowed inline; if one falls short, `--count 60` gives it more to work with.
+allowed inline; if one falls short, `--count=60` gives it more to work with.

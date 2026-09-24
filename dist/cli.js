@@ -3,7 +3,7 @@ import {
   readConversations,
   readHistory,
   toTurns
-} from "./chunk-ZFN6MPQ7.js";
+} from "./chunk-FG5G3WI2.js";
 import {
   appendLogMany,
   appendScores,
@@ -41,7 +41,7 @@ import {
 } from "./chunk-KYVNDBDC.js";
 import {
   applyPrivacy
-} from "./chunk-Y4PX5WS7.js";
+} from "./chunk-UNIAFSWS.js";
 
 // src/cli.ts
 import { readFileSync, writeFileSync } from "node:fs";
