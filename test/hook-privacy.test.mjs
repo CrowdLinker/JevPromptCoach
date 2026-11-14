@@ -640,6 +640,57 @@ test('metadata_only sends nothing at all', async () => {
   assert.equal(captured.length, 0, 'metadata_only must make no request');
 });
 
+/** Runs report over one entry logged under `raw`. */
+function runReport(privacy) {
+  const home = mkdtempSync(join(tmpdir(), 'jpc-test-'));
+  const dir = join(home, '.claude', 'jevpromptcoach');
+  mkdirSync(dir, { recursive: true });
+  const logged = 'Refactor /Users/someone/clients/acme/app/main.ts and mail bob@acme.com';
+  writeFileSync(
+    join(dir, 'prompts.jsonl'),
+    JSON.stringify({
+      ts: '2026-01-01T00:00:00.000Z',
+      session: 's',
+      hash: 'r0',
+      text: logged,
+      features: {},
+      source: 'hook',
+    }) + '\n',
+  );
+  writeFileSync(join(dir, '.env'), 'TYPESAFE_API_KEY=not-a-real-key\n');
+  writeFileSync(
+    join(dir, 'config.json'),
+    JSON.stringify({ mode: 'on-demand', privacy, setupComplete: true, alwaysTimeoutMs: 4000, bypassPrefix: '*' }),
+  );
+  const child = spawn(process.execPath, ['dist/cli.js', 'report'], {
+    env: { ...process.env, HOME: home, TYPESAFE_BASE_URL: `http://127.0.0.1:${port}` },
+    stdio: 'ignore',
+  });
+  return new Promise((resolve) => {
+    child.on('close', (status) => {
+      rmSync(home, { recursive: true, force: true });
+      resolve({ status });
+    });
+  });
+}
+
+test('report re-applies the current privacy level to prompts logged under raw', async () => {
+  captured.length = 0;
+  await runReport('redact');
+  assert.equal(captured.length, 1, 'expected exactly one request');
+
+  const sent = JSON.stringify(captured[0]);
+  assert.ok(!sent.includes('bob@acme.com'), 'the email reached the wire');
+  assert.ok(!sent.includes('clients/acme'), 'the client path reached the wire');
+  assert.ok(sent.includes('main.ts'), 'the filename should survive redaction');
+});
+
+test('report under metadata_only sends nothing, even for prompts logged with text', async () => {
+  captured.length = 0;
+  await runReport('metadata_only');
+  assert.equal(captured.length, 0, 'metadata_only must make no request');
+});
+
 test('the hook never exits non-zero, even with unusable input', async () => {
   for (const input of ['', 'not json', '{}', '{"prompt":""}']) {
     const r = await new Promise((resolve) => {
