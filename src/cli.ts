@@ -137,6 +137,7 @@ async function cmdReport(argv: string[]): Promise<void> {
 
   const window = entries.slice(-requested);
   const scores = readScores();
+  const { privacy } = loadConfig();
 
   const unscored = window.filter(hasText).filter((e) => !scores.has(e.hash));
   // Without a key we cannot score the new ones, but we can still report on
@@ -147,13 +148,22 @@ async function cmdReport(argv: string[]): Promise<void> {
       `TYPESAFE_API_KEY is not set, so ${unscored.length} newer prompts could not be scored.\n` +
         'Reporting on what is already scored. Nothing was sent.\n',
     );
-  } else if (unscored.length > 0) {
-    const tokens = estimateScoringTokens(unscored.map((e) => e.text));
-    process.stderr.write(`Scoring ${unscored.length} new prompts (~${usd(tokens)})…\n`);
-    const records = await scoreMany(
-      unscored.map((e) => ({ hash: e.hash, text: e.text })),
-      { onProgress: (d, t) => process.stderr.write(`  batch ${d}/${t}\r`) },
+  } else if (unscored.length > 0 && privacy === 'metadata_only') {
+    process.stderr.write(
+      `Privacy is metadata_only, so ${unscored.length} newer prompts were not scored.\n` +
+        'Reporting on what is already scored. Nothing was sent.\n',
     );
+  } else if (unscored.length > 0) {
+    // Entries may have been logged under a looser level, so redact again.
+    const sendable = unscored.flatMap((e) => {
+      const text = applyPrivacy(e.text, privacy).text;
+      return text === null ? [] : [{ hash: e.hash, text }];
+    });
+    const tokens = estimateScoringTokens(sendable.map((e) => e.text));
+    process.stderr.write(`Scoring ${sendable.length} new prompts (~${usd(tokens)})…\n`);
+    const records = await scoreMany(sendable, {
+      onProgress: (d, t) => process.stderr.write(`  batch ${d}/${t}\r`),
+    });
     appendScores(records);
     for (const record of records) scores.set(record.hash, record);
     process.stderr.write('\n');

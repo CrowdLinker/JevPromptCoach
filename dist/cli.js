@@ -465,6 +465,7 @@ async function cmdReport(argv) {
   }
   const window = entries.slice(-requested);
   const scores = readScores();
+  const { privacy } = loadConfig();
   const unscored = window.filter(hasText).filter((e) => !scores.has(e.hash));
   if (unscored.length > 0 && !apiKey()) {
     process.stderr.write(
@@ -472,14 +473,23 @@ async function cmdReport(argv) {
 Reporting on what is already scored. Nothing was sent.
 `
     );
-  } else if (unscored.length > 0) {
-    const tokens = estimateScoringTokens(unscored.map((e) => e.text));
-    process.stderr.write(`Scoring ${unscored.length} new prompts (~${usd(tokens)})\u2026
-`);
-    const records = await scoreMany(
-      unscored.map((e) => ({ hash: e.hash, text: e.text })),
-      { onProgress: (d, t) => process.stderr.write(`  batch ${d}/${t}\r`) }
+  } else if (unscored.length > 0 && privacy === "metadata_only") {
+    process.stderr.write(
+      `Privacy is metadata_only, so ${unscored.length} newer prompts were not scored.
+Reporting on what is already scored. Nothing was sent.
+`
     );
+  } else if (unscored.length > 0) {
+    const sendable = unscored.flatMap((e) => {
+      const text = applyPrivacy(e.text, privacy).text;
+      return text === null ? [] : [{ hash: e.hash, text }];
+    });
+    const tokens = estimateScoringTokens(sendable.map((e) => e.text));
+    process.stderr.write(`Scoring ${sendable.length} new prompts (~${usd(tokens)})\u2026
+`);
+    const records = await scoreMany(sendable, {
+      onProgress: (d, t) => process.stderr.write(`  batch ${d}/${t}\r`)
+    });
     appendScores(records);
     for (const record of records) scores.set(record.hash, record);
     process.stderr.write("\n");
